@@ -57,7 +57,7 @@ class BertSingleSentenceFeaturizer(tf.Module):
 
         attention_mask = tf.cast(tf.math.not_equal(token_ids, self.pad_token_id), tf.int32)
         segment_ids = tf.zeros_like(token_ids)
-        return {'input_word_ids': token_ids,
+        return {'input_ids': token_ids,
                 'attention_mask': attention_mask,
                 'token_type_ids': segment_ids}
 
