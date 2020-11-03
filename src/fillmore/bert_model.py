@@ -1,5 +1,6 @@
 from transformers import TFBertPreTrainedModel, TFBertForSequenceClassification
 from fillmore.bert_featurizer import BertSingleSentenceFeaturizer
+import tensorflow as tf
 
 class BertTextClassification(TFBertPreTrainedModel):
     def __init__(self, config, *inputs, **kwargs):
@@ -13,8 +14,8 @@ class BertTextClassification(TFBertPreTrainedModel):
             max_sen_len=self.max_seq_len
         )
         self.updated_layer = self.model.classifier
-        self.updated_weights = self.updated_layer.weights
-    
+        self.dummy_text_inputs = tf.constant(["the son of flynn", "more than just a man"])
+
     def call(self, inputs, weights=None, labels=None):
         # update weights
         if weights is not None:
