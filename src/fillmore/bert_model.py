@@ -12,12 +12,14 @@ class BertTextClassification(TFBertPreTrainedModel):
             self.vocab_path,
             max_sen_len=self.max_seq_len
         )
+        self.updated_layer = self.model.classifier
+        self.updated_weights = self.updated_layer.weights
     
     def call(self, inputs, weights=None, labels=None):
         # update weights
         if weights is not None:
             # update weights for classifier
-            self.model.classifier.set_weights(weights)
+            self.updated_layer.set_weights(weights)
 
         # inference
         features = self.tokenizer(inputs)
