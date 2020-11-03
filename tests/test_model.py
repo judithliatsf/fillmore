@@ -71,8 +71,7 @@ class BertSingleSentenceFeaturizerTest(tf.test.TestCase):
         wrapper = BertTextClassification(self.config)
 
         # forward run to get logits and loss
-        output1 = wrapper(input_tensor)
-        logits = output1[0]
+        logits = wrapper(input_tensor)
         loss = cross_entropy_loss(logits, input_labels)
 
 
@@ -88,22 +87,32 @@ class BertSingleSentenceFeaturizerTest(tf.test.TestCase):
     def test_update_weights(self):
         wrapper = BertTextClassification(self.config)
         # initialize weights
-        output = wrapper(wrapper.dummy_text_inputs)
+        old_logits = wrapper(wrapper.dummy_text_inputs)
 
         # check weights
         self.assertEqual(len(wrapper.weights), 201)
-        self.assertEqual(len(wrapper.updated_layer.weights), 2)
+        self.assertEqual(len(wrapper.classifier.weights), 2)
 
         # change weights and test inference
-        old_weights = wrapper.updated_layer.get_weights()
+        old_weights = wrapper.classifier.get_weights()
         new_weights = []
         for w in old_weights:
             new_weights.append(tf.zeros_like(w))
         
-        output1 = wrapper(wrapper.dummy_text_inputs, new_weights)
-        logits = output1[0]
         expected_logits = tf.constant(
             [[0., 0., 0.],
              [0., 0., 0.]], dtype=tf.float32
         )
+
+        # run inference without change model weights
+        logits = wrapper(wrapper.dummy_text_inputs, new_weights, update_weights=False)
         self.assertAllClose(logits, expected_logits)
+        self.assertAllClose(wrapper.classifier.get_weights(), old_weights)
+        logits1 = wrapper(wrapper.dummy_text_inputs)
+        self.assertAllClose(logits1, old_logits)
+
+        # run inference by changing the existing model weights
+        logits = wrapper(wrapper.dummy_text_inputs, new_weights, update_weights=True)
+        self.assertAllClose(logits, expected_logits)
+        self.assertAllClose(wrapper.classifier.get_weights(), new_weights)
+

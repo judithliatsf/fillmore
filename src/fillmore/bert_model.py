@@ -1,6 +1,7 @@
-from transformers import TFBertPreTrainedModel, TFBertForSequenceClassification
+from transformers import TFBertPreTrainedModel, TFBertMainLayer
 from fillmore.bert_featurizer import BertSingleSentenceFeaturizer
 import tensorflow as tf
+
 
 class BertTextClassification(TFBertPreTrainedModel):
     def __init__(self, config, *inputs, **kwargs):
@@ -8,20 +9,48 @@ class BertTextClassification(TFBertPreTrainedModel):
         self.num_labels = config.num_labels
         self.vocab_path = config.vocab_path
         self.max_seq_len = config.max_seq_len
-        self.model = TFBertForSequenceClassification(config)
         self.tokenizer = BertSingleSentenceFeaturizer(
             self.vocab_path,
             max_sen_len=self.max_seq_len
         )
-        self.updated_layer = self.model.classifier
-        self.dummy_text_inputs = tf.constant(["the son of flynn", "more than just a man"])
+        self.dummy_text_inputs = tf.constant(
+            ["the son of flynn", "more than just a man"])
 
-    def call(self, inputs, weights=None, labels=None):
-        # update weights
-        if weights is not None:
-            # update weights for classifier
-            self.updated_layer.set_weights(weights)
+        # layer definition
+        self.bert = TFBertMainLayer(config, name="bert")
+        self.dropout = tf.keras.layers.Dropout(config.hidden_dropout_prob)
+        self.classifier = tf.keras.layers.Dense(
+            config.num_labels,
+            kernel_initializer=tf.keras.initializers.TruncatedNormal(
+                stddev=config.initializer_range),
+            name="classifier"
+        )
 
-        # inference
+    def call(self, inputs, weights=None, update_weights=True, training=False):
+        # transform to features
         features = self.tokenizer(inputs)
-        return self.model(features, labels=labels)
+        outputs = self.bert(features)
+        pooled_output = outputs[1]
+        pooled_output = self.dropout(pooled_output, training=training)
+
+        if weights is None:
+            # don't update weights
+            logits = self.classifier(pooled_output)
+        else:
+            # update weights
+            # set update=True will change the model weights
+            if update_weights:
+                # update weights for classifier
+                self.classifier.set_weights(weights)
+                logits = self.classifier(pooled_output)
+            else:
+                # create a new classifier layer
+                classifier_copy = tf.keras.layers.Dense(
+                    self.num_labels,
+                    kernel_initializer=self.classifier.kernel_initializer,
+                    name="classifier_copy")
+                # initialize the weights
+                classifier_copy.build((pooled_output.shape))
+                classifier_copy.set_weights(weights)
+                logits = classifier_copy(pooled_output)
+        return logits
