@@ -188,7 +188,7 @@ def _load_json(path):
             if item_label in data_by_class.keys():
                 data_by_class[item_label].append(item)
             else:
-                data_by_class[item_label] = list(item)
+                data_by_class[item_label] = [item]
 
         tprint('Class balance:')
 
@@ -275,3 +275,7 @@ def load_dataset(args):
     #     len(train_data), len(val_data), len(test_data)))
 
     return train_classes, val_classes, test_classes, data_by_class
+
+if __name__ == "__main__":
+    all_data, data_by_class = _load_json("data/reuters.json")
+    print(len(all_data))
