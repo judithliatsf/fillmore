@@ -26,31 +26,11 @@ class BertTextClassification(TFBertPreTrainedModel):
             name="classifier"
         )
 
-    def call(self, inputs, weights=None, update_weights=True, training=False):
+    def call(self, inputs, training=False):
         # transform to features
         features = self.tokenizer(inputs)
         outputs = self.bert(features)
         pooled_output = outputs[1]
         pooled_output = self.dropout(pooled_output, training=training)
-
-        if weights is None:
-            # don't update weights
-            logits = self.classifier(pooled_output)
-        else:
-            # update weights
-            # set update=True will change the model weights
-            if update_weights:
-                # update weights for classifier
-                self.classifier.set_weights(weights)
-                logits = self.classifier(pooled_output)
-            else:
-                # create a new classifier layer
-                classifier_copy = tf.keras.layers.Dense(
-                    self.num_labels,
-                    kernel_initializer=self.classifier.kernel_initializer,
-                    name="classifier_copy")
-                # initialize the weights
-                classifier_copy.build((pooled_output.shape))
-                classifier_copy.set_weights(weights)
-                logits = classifier_copy(pooled_output)
+        logits = self.classifier(pooled_output)
         return logits

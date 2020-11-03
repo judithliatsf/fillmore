@@ -25,7 +25,7 @@ class TextDataGenerator(object):
 
         random.seed(seed)
 
-    def sample_batch(self, args, batch_type, batch_size):
+    def sample_batch(self, args, batch_type, batch_size, shuffle=True, swap=False):
         """Generate a batch of data
 
         Args:
@@ -63,11 +63,25 @@ class TextDataGenerator(object):
                     texts.append(" ".join(item['text']))
                     labels.append(i)
             texts = np.array(texts).astype(np.str)
-            texts = np.reshape(texts, (num_classes, num_samples_per_class,))
+            texts = np.reshape(texts, (num_classes, num_samples_per_class)) # N, K, 1
             labels = np.array(labels).astype(np.int32)
             labels = np.reshape(labels, (num_classes, num_samples_per_class))
-            labels = np.eye(num_classes, dtype=np.float32)[labels]
+            labels = np.eye(num_classes, dtype=np.float32)[labels] # N, K, N
             
+            # batch = np.concatenate([texts, labels], 2)
+            # print(batch)
+            # if shuffle:
+            #     for p in range(num_samples_per_class):
+            #         np.random.shuffle(batch[:, p])
+            
+            # labels = batch[:, :, :num_classes]
+            # texts = batch[:, :, num_classes:]
+            # print(labels.shape)
+            # print(texts.shape)
+            # if swap:
+            #     labels = np.swapaxes(labels, 0, 1)
+            #     texts = np.swapaxes(texts, 0, 1)
+
             all_text_batches.append(texts)
             all_label_batches.append(labels)
 

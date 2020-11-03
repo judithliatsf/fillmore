@@ -13,22 +13,26 @@ import numpy as np
 import pickle
 import random
 import tensorflow as tf
-from fillmore.load_data import DataGenerator
 from fillmore.maml import *
 from fillmore.utils import *
-
+from fillmore.dataset.load_text import TextDataGenerator
 
 def outer_train_step(inp, model, optim, meta_batch_size=25, num_inner_updates=1):
-    with tf.GradientTape(persistent=False) as outer_tape:
+    model.forward(model.forward.dummy_text_inputs)
+    model.forward.bert.trainable = False
+    print("number of trainable variables {}".format(len(model.trainable_weights)))
+
+    with tf.GradientTape() as outer_tape:
         result = model(inp, meta_batch_size=meta_batch_size,
                        num_inner_updates=num_inner_updates)
 
         outputs_tr, outputs_ts, losses_tr_pre, losses_ts, accuracies_tr_pre, accuracies_ts = result
 
         total_losses_ts = [tf.reduce_mean(loss_ts) for loss_ts in losses_ts]
-
+    
+    import pdb; pdb.set_trace()
     gradients = outer_tape.gradient(
-        total_losses_ts[-1], model.trainable_variables)
+        total_losses_ts[-1], model.trainable_variables) # gradients return [NONE, NONE]
     optim.apply_gradients(zip(gradients, model.trainable_variables))
 
     total_loss_tr_pre = tf.reduce_mean(losses_tr_pre)
@@ -55,7 +59,7 @@ def outer_eval_step(inp, model, meta_batch_size=25, num_inner_updates=1):
     return outputs_tr, outputs_ts, total_loss_tr_pre, total_losses_ts, total_accuracy_tr_pre, total_accuracies_ts
 
 
-def meta_train_fn(model, exp_string, data_generator,
+def meta_train_fn(model, exp_string, data_generator, config,
                   n_way=5, meta_train_iterations=15000, meta_batch_size=25,
                   log=True, logdir='/tmp/data', k_shot=1, num_inner_updates=1, meta_lr=0.001):
     SUMMARY_INTERVAL = 10
@@ -80,11 +84,11 @@ def meta_train_fn(model, exp_string, data_generator,
             # NOTE: The code assumes that the support and query sets have the same number of examples.
 
             #############################
-            images, labels = data_generator.sample_batch(
-                "meta_train", meta_batch_size, shuffle=True, swap=False)
-            B, N, K, dim_in = images.shape
-            input_tr = tf.reshape(images[:, :, :k_shot, :], [B, N*k_shot, -1])
-            input_ts = tf.reshape(images[:, :, k_shot:, :], [B, N*k_shot, -1])
+            texts, labels = data_generator.sample_batch(
+                config, "meta_train", meta_batch_size, shuffle=True, swap=False)
+            B, N, K = texts.shape
+            input_tr = tf.reshape(texts[:, :, :k_shot], [B, N*k_shot])
+            input_ts = tf.reshape(texts[:, :, k_shot:], [B, N*k_shot])
             label_tr = tf.reshape(labels[:, :, :k_shot, :], [B, N*k_shot, -1])
             label_ts = tf.reshape(labels[:, :, k_shot:, :], [B, N*k_shot, -1])
 
@@ -117,13 +121,13 @@ def meta_train_fn(model, exp_string, data_generator,
                 # NOTE: The code assumes that the support and query sets have the same number of examples.
 
                 #############################
-                images, labels = data_generator.sample_batch(
-                    "meta_val", meta_batch_size, shuffle=True, swap=False)
-                B, N, K, dim_in = images.shape
+                texts, labels = data_generator.sample_batch(
+                    config, "meta_val", meta_batch_size, shuffle=True, swap=False)
+                B, N, K = texts.shape
                 input_tr = tf.reshape(
-                    images[:, :, :k_shot, :], [B, N*k_shot, -1])
+                    texts[:, :, :k_shot], [B, N*k_shot])
                 input_ts = tf.reshape(
-                    images[:, :, k_shot:, :], [B, N*k_shot, -1])
+                    texts[:, :, k_shot:], [B, N*k_shot])
                 label_tr = tf.reshape(
                     labels[:, :, :k_shot, :], [B, N*k_shot, -1])
                 label_ts = tf.reshape(
@@ -151,7 +155,7 @@ def meta_train_fn(model, exp_string, data_generator,
 NUM_META_TEST_POINTS = 600
 
 
-def meta_test_fn(model, data_generator, n_way=5, meta_batch_size=25, k_shot=1,
+def meta_test_fn(model, data_generator, config, n_way=5, meta_batch_size=25, k_shot=1,
                  num_inner_updates=1):
 
     num_classes = data_generator.num_classes
@@ -169,14 +173,14 @@ def meta_test_fn(model, data_generator, n_way=5, meta_batch_size=25, k_shot=1,
         # the support/training set (input_tr, label_tr) and the query/test set (input_ts, label_ts)
         # NOTE: The code assumes that the support and query sets have the same number of examples.
 
-        #############################
-        images, labels = data_generator.sample_batch(
-            "meta_test", meta_batch_size, shuffle=True, swap=False)
-        B, N, K, dim_in = images.shape
-        input_tr = tf.reshape(images[:, :, :k_shot, :], [B, N*k_shot, -1])
-        input_ts = tf.reshape(images[:, :, k_shot:, :], [B, N*k_shot, -1])
-        label_tr = tf.reshape(labels[:, :, :k_shot, :], [B, N*k_shot, -1])
-        label_ts = tf.reshape(labels[:, :, k_shot:, :], [B, N*k_shot, -1])
+        #############################config, "meta_train", config.meta_batch_size
+        texts, labels = data_generator.sample_batch(
+            config, "meta_test", meta_batch_size, shuffle=True, swap=False)
+        B, N, K = texts.shape
+        input_tr = tf.reshape(texts[:, :, :k_shot], [B, N*k_shot])
+        input_ts = tf.reshape(texts[:, :, k_shot:], [B, N*k_shot])
+        label_tr = tf.reshape(labels[:, :, :k_shot], [B, N*k_shot, -1])
+        label_ts = tf.reshape(labels[:, :, k_shot:], [B, N*k_shot, -1])
 
         inp = (input_tr, input_ts, label_tr, label_ts)
         result = outer_eval_step(
@@ -201,19 +205,28 @@ def run_maml(n_way=5, k_shot=1, meta_batch_size=25, meta_lr=0.001,
              meta_train_iterations=15000, meta_train_k_shot=-1,
              meta_train_inner_update_lr=-1):
 
-    # call data_generator and get data with k_shot*2 samples per class
-    data_generator = DataGenerator(
-        n_way, k_shot*2, n_way, k_shot*2, config={'data_folder': data_path})
+    # model config
+    config = BertConfig.from_pretrained("bert-base-uncased")
+    config.num_labels = n_way
+    config.vocab_path = "/Users/yue.li/Desktop/repo/Personal/fillmore/tests/fixtures/vocab.txt"
+    config.max_seq_len = 32
+    config.mode="finetune" #TODO
+    config.dataset = "reuters"
+    config.n_train_class = 15
+    config.n_val_class = 5
+    config.n_test_class = 11
+    config.data_path = "data/reuters.json"
+    config.n_way = n_way
+    config.k_shot = k_shot
+    config.meta_batch_size = meta_batch_size
 
+    # call data_generator and get data with k_shot*2 samples per class
+    data_generator = TextDataGenerator(config.n_way, config.k_shot*2, config.n_way, config.k_shot*2, config.dataset)
+    
     # set up MAML model
-    dim_output = data_generator.dim_output
-    dim_input = data_generator.dim_input
-    model = MAML(dim_input,
-                 dim_output,
+    model = MAML(config,
                  num_inner_updates=num_inner_updates,
                  inner_update_lr=inner_update_lr,
-                 k_shot=k_shot,
-                 num_filters=num_filters,
                  learn_inner_update_lr=learn_inner_update_lr)
 
     if meta_train_k_shot == -1:
@@ -225,7 +238,7 @@ def run_maml(n_way=5, k_shot=1, meta_batch_size=25, meta_lr=0.001,
         num_inner_updates) + '.inner_updatelr_' + str(meta_train_inner_update_lr) + '.learn_inner_update_lr_' + str(learn_inner_update_lr)
 
     if meta_train:
-        meta_train_fn(model, exp_string, data_generator,
+        meta_train_fn(model, exp_string, data_generator, config,
                       n_way, meta_train_iterations, meta_batch_size, log, logdir,
                       k_shot, num_inner_updates, meta_lr)
     else:
@@ -235,7 +248,7 @@ def run_maml(n_way=5, k_shot=1, meta_batch_size=25, meta_lr=0.001,
         print("Restoring model weights from ", model_file)
         model.load_weights(model_file)
 
-        meta_test_fn(model, data_generator, n_way,
+        meta_test_fn(model, data_generator, config, n_way,
                      meta_batch_size, k_shot, num_inner_updates)
 
 
@@ -247,4 +260,5 @@ if __name__ == "__main__":
              meta_train_k_shot=1,
              learn_inner_update_lr=False,
              meta_train_iterations=100,
+             meta_batch_size=2,
              logdir='./logs/maml')

@@ -3,20 +3,22 @@ import numpy as np
 import sys
 import tensorflow as tf
 from functools import partial
-from fillmore.utils import *
 
+from tensorflow.python.keras.backend import update
+from fillmore.utils import *
+from fillmore.bert_model import BertTextClassification
+from transformers import BertConfig
+    
 class MAML(tf.keras.Model):
-    def __init__(self, dim_input=1, dim_output=1,
+    def __init__(self, model_config,
                  num_inner_updates=1,
-                 inner_update_lr=0.4, num_filters=32, k_shot=5, learn_inner_update_lr=False):
+                 inner_update_lr=0.4, 
+                 learn_inner_update_lr=False
+                 ):
         super(MAML, self).__init__()
-        self.dim_input = dim_input
-        self.dim_output = dim_output
         self.inner_update_lr = inner_update_lr
-        self.loss_func = partial(cross_entropy_loss, k_shot=k_shot)
-        self.dim_hidden = num_filters
-        self.channels = 1
-        self.img_size = int(np.sqrt(self.dim_input/self.channels))
+        self.loss_func = cross_entropy_loss
+        self.config = model_config
 
         # outputs_ts[i] and losses_ts_post[i] are the output and loss after i+1 inner gradient updates
         losses_tr_pre, outputs_tr, losses_ts_post, outputs_ts = [], [], [], []
@@ -30,13 +32,15 @@ class MAML(tf.keras.Model):
         # Define the weights - these should NOT be directly modified by the
         # inner training loop
         tf.random.set_seed(seed)
-        self.conv_layers = ConvLayers(
-            self.channels, self.dim_hidden, self.dim_output, self.img_size)
+        self.forward = BertTextClassification(self.config)
+        dummy_outputs = self.forward(self.forward.dummy_text_inputs) # initialize weights
 
+        # adjustable learning rate
         self.learn_inner_update_lr = learn_inner_update_lr
         if self.learn_inner_update_lr:
             self.inner_update_lr_dict = {}
-            for key in self.conv_layers.conv_weights.keys():
+            for w in self.forward.classifier.weights:
+                key = w.name
                 self.inner_update_lr_dict[key] = [tf.Variable(
                     self.inner_update_lr, name='inner_update_lr_%s_%d' % (key, j)) for j in range(num_inner_updates)]
 
@@ -50,8 +54,8 @@ class MAML(tf.keras.Model):
                   labels used for calculating inner loop gradients and input_ts and label_ts are the inputs and
                   labels used for evaluating the model after inner updates.
                   Should be shapes:
-                    input_tr: [N*K, 784]
-                    input_ts: [N*K, 784]
+                    input_tr: [N*K, ]
+                    input_ts: [N*K, ]
                     label_tr: [N*K, N]
                     label_ts: [N*K, N]
               Returns:
@@ -61,18 +65,28 @@ class MAML(tf.keras.Model):
             input_tr, input_ts, label_tr, label_ts = inp
 
             # weights corresponds to the initial weights in MAML (i.e. the meta-parameters)
-            weights = self.conv_layers.conv_weights
-            task_output_tr_pre = self.conv_layers(input_tr, weights)
+            task_output_tr_pre = self.forward(input_tr)
             task_loss_tr_pre = self.loss_func(task_output_tr_pre, label_tr)
-            fast_weights = weights.copy()
+    
+            # make a copy of the weights
+            # fast_weights = self.forward.classifier.weights.copy()
+            # not work
+            # self.forward.classifier_copy.set_weights(self.forward.classifier.get_weights())
+            # fast_weights = self.forward.classifier_copy.weights
+            # make copy of model
+            forward_copied = BertTextClassification(self.config)
+            forward_copied(forward_copied.dummy_text_inputs, training=False)
+            forward_copied.set_weights(self.forward.get_weights())
+            fast_weights = forward_copied.classifier.weights
+            # print([w.name for w in fast_weights])
 
             # the predicted outputs, loss values, and accuracy for the pre-update model (with the initial weights)
             # evaluated on the inner loop training data
-            # TODO do we have to evlaute forward pass before inner gradients
+            # TODO do we have to evaluate forward pass before inner gradients
             # not sure if persistent is required here, the gradients are computed multiple times
             # it could be defined inside the num_inner_updates loop
             # with tf.GradientTape(persistent=True) as train_tape:
-            #   task_output_tr_pre = self.conv_layers(input_tr, fast_weights)
+            #   task_output_tr_pre = self.forward(input_tr, fast_weights)
             #   task_loss_tr_pre = self.loss_func(task_output_tr_pre, label_tr)
 
             # lists to keep track of outputs, losses, and accuracies of test data for each inner_update
@@ -108,35 +122,39 @@ class MAML(tf.keras.Model):
                 # in reference to the updated weights.
                 # 3. persistent=True is not required unless the gradients needs to be
                 # computed more than once outside the gradient tape
-                with tf.GradientTape() as train_tape:
-                    variables = list(fast_weights.values())
-                    train_tape.watch(variables)
-                    task_output_tr_pre = self.conv_layers(
-                        input_tr, fast_weights)
-                    task_loss_tr_pre = self.loss_func(
-                        task_output_tr_pre, label_tr)
+                with tf.GradientTape(watch_accessed_variables=False) as train_tape:
+                    train_tape.watch(fast_weights)
+                    task_output_tr_pre = forward_copied(input_tr, training=True)
+                    # fast_weights_values = [w.numpy() for w in fast_weights]
+                    # task_output_tr_pre = forward_copied(
+                    #     input_tr, weights=fast_weights_values, update_copy=False, training=True)
+                    # task_output_tr_pre = self.forward(input_tr, weights=fast_weights_values, update_copy=True, training=True)
+                    task_loss_tr_pre = self.loss_func(task_output_tr_pre, label_tr)
 
                 # check if variables are being watched
                 # print([var.name for var in train_tape.watched_variables()])
 
                 # will the gradients changes after weights are updated to fast_weights?
-                gradients = train_tape.gradient(task_loss_tr_pre, fast_weights)
+                gradients = train_tape.gradient(task_loss_tr_pre, fast_weights) #TODO gradients return NONE
 
                 # update weights using gradient descent
                 # by including inner_update_lr_dict in the computation
                 # all the learning rate related variables are being watched by
                 # the gradient tape in the outer loop
-                for key, v in fast_weights.items():
+                fast_weights_values = []
+                for i, (w, grad) in enumerate(zip(fast_weights, gradients)):
+                    key = w.name
                     if self.learn_inner_update_lr:
-                        fast_weights[key] = v - \
-                            self.inner_update_lr_dict[key][j] * gradients[key]
+                        w = w - \
+                            self.inner_update_lr_dict[key][j] * grad
+                        fast_weights_values.append(w.numpy())
                     else:
-                        fast_weights[key] = v - \
-                            self.inner_update_lr * gradients[key]
+                        w = w - \
+                            self.inner_update_lr * grad
+                        fast_weights_values.append(w.numpy())
 
                 # compute test loss using new weights
-                task_output_ts = self.conv_layers(input_ts, fast_weights)
-                # /tf.cast(meta_batch_size, tf.float32)
+                task_output_ts = forward_copied(input_ts, training=False)
                 task_loss_ts = self.loss_func(task_output_ts, label_ts)
 
                 # gradients = test_tape.gradient(task_loss_ts, weights)
