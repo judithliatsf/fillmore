@@ -1,6 +1,6 @@
 import tensorflow as tf
 from fillmore.bert_featurizer import BertSingleSentenceFeaturizer
-from fillmore.bert_model import BertTextClassification
+from fillmore.bert_model import BertTextClassification, BertTextEncoder
 from fillmore.utils import cross_entropy_loss
 from transformers import *
 import os
@@ -108,4 +108,8 @@ class BertSingleSentenceFeaturizerTest(tf.test.TestCase):
         logits = wrapper(wrapper.dummy_text_inputs, training=False)
         self.assertAllClose(logits, expected_logits)
         self.assertAllClose(wrapper.classifier.get_weights(), new_weights)
-
+    
+    def test_bert_encoder(self):
+        encoder = BertTextEncoder(self.config)
+        output = encoder(encoder.dummy_text_inputs)
+        self.assertEqual(output.shape, [2, 768])
