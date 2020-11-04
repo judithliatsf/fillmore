@@ -10,20 +10,26 @@ class TextDataGenerator(object):
                  num_samples_per_class,
                  num_meta_test_classes, 
                  num_meta_test_samples_per_class, 
-                 dataset,
+                 config,
                  seed=123
                  ):
         self.num_samples_per_class = num_samples_per_class
         self.num_classes = num_classes
         self.num_meta_test_samples_per_class = num_meta_test_samples_per_class
         self.num_meta_test_classes = num_meta_test_classes
-        self.dataset = dataset
+        self.dataset = config.dataset
         # text_size = config.get('emb_size', 786)
 
         self.dim_input = 1 # "string"
         self.dim_output = self.num_classes
 
+        # load data organized by class
         random.seed(seed)
+        train_classes, val_classes, test_classes, data_by_class = load_dataset(config)
+        self.train_classes = train_classes
+        self.val_classes = val_classes
+        self.test_classes = test_classes
+        self.data_by_class = data_by_class
 
     def sample_batch(self, args, batch_type, batch_size, shuffle=True, swap=False):
         """Generate a batch of data
@@ -38,17 +44,16 @@ class TextDataGenerator(object):
             text batch has shape [B, N, K] and label batch has shape [B, N, K, N] if swap is False
             where B is batch size, K is number of samples per class, N is number of classes
         """
-        train_classes, val_classes, test_classes, data_by_class = load_dataset(args)
         if batch_type == "meta_train":
-            folders = train_classes
+            folders = self.train_classes
             num_classes = self.num_classes
             num_samples_per_class = self.num_samples_per_class
         elif batch_type == "meta_val":
-            folders = val_classes
+            folders = self.val_classes
             num_classes = self.num_classes
             num_samples_per_class = self.num_samples_per_class
         else:
-            folders = test_classes
+            folders = self.test_classes
             num_classes = self.num_meta_test_classes
             num_samples_per_class = self.num_meta_test_samples_per_class
         
@@ -58,7 +63,7 @@ class TextDataGenerator(object):
             sampled_classes = random.sample(folders, num_classes)
             texts, labels = [], []
             for i, c in enumerate(sampled_classes):
-                all_items = random.sample(data_by_class[c], num_samples_per_class)
+                all_items = random.sample(self.data_by_class[c], num_samples_per_class)
                 for item in all_items:
                     texts.append(" ".join(item['text']))
                     labels.append(i)

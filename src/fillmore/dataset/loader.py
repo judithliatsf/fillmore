@@ -259,11 +259,11 @@ def load_dataset(args):
     assert(len(val_classes) == args.n_val_class)
     assert(len(test_classes) == args.n_test_class)
 
-    if args.mode == 'finetune':
-        # in finetune, we combine train and val for training the base classifier
-        train_classes = train_classes + val_classes
-        args.n_train_class = args.n_train_class + args.n_val_class
-        args.n_val_class = args.n_train_class
+    # if args.mode == 'finetune':
+    #     # in finetune, we combine train and val for training the base classifier
+    #     train_classes = train_classes + val_classes
+    #     args.n_train_class = args.n_train_class + args.n_val_class
+    #     args.n_val_class = args.n_train_class
 
     tprint('Loading data')
     all_data, data_by_class = _load_json(args.data_path)

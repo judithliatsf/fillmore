@@ -18,11 +18,11 @@ from fillmore.utils import *
 from fillmore.dataset.load_text import TextDataGenerator
 
 def outer_train_step(inp, model, optim, meta_batch_size=25, num_inner_updates=1):
-    model.forward(model.forward.dummy_text_inputs)
-    model.forward.bert.trainable = False
-    print("number of trainable variables {}".format(len(model.trainable_weights)))
 
-    with tf.GradientTape() as outer_tape:
+    with tf.GradientTape(watch_accessed_variables=False) as outer_tape:
+        # only watch trainable variables
+        outer_tape.watch(model.trainable_variables)
+
         result = model(inp, meta_batch_size=meta_batch_size,
                        num_inner_updates=num_inner_updates)
 
@@ -30,7 +30,6 @@ def outer_train_step(inp, model, optim, meta_batch_size=25, num_inner_updates=1)
 
         total_losses_ts = [tf.reduce_mean(loss_ts) for loss_ts in losses_ts]
     
-    import pdb; pdb.set_trace()
     gradients = outer_tape.gradient(
         total_losses_ts[-1], model.trainable_variables) # gradients return [NONE, NONE]
     optim.apply_gradients(zip(gradients, model.trainable_variables))
@@ -151,13 +150,14 @@ def meta_train_fn(model, exp_string, data_generator, config,
     model.save_weights(model_file)
 
 
-# calculated for omniglot
-NUM_META_TEST_POINTS = 600
+# # calculated for omniglot
+# NUM_META_TEST_POINTS = 600
 
 
 def meta_test_fn(model, data_generator, config, n_way=5, meta_batch_size=25, k_shot=1,
                  num_inner_updates=1):
 
+    NUM_META_TEST_POINTS = config.num_meta_test_points
     num_classes = data_generator.num_classes
 
     np.random.seed(1)
@@ -203,7 +203,7 @@ def run_maml(n_way=5, k_shot=1, meta_batch_size=25, meta_lr=0.001,
              resume=False, resume_itr=0, log=True, logdir='/tmp/data',
              data_path='./omniglot_resized', meta_train=True,
              meta_train_iterations=15000, meta_train_k_shot=-1,
-             meta_train_inner_update_lr=-1):
+             meta_train_inner_update_lr=-1, num_meta_test_points=10):
 
     # model config
     config = BertConfig.from_pretrained("bert-base-uncased")
@@ -219,10 +219,12 @@ def run_maml(n_way=5, k_shot=1, meta_batch_size=25, meta_lr=0.001,
     config.n_way = n_way
     config.k_shot = k_shot
     config.meta_batch_size = meta_batch_size
+    config.num_meta_test_points = num_meta_test_points
 
     # call data_generator and get data with k_shot*2 samples per class
-    data_generator = TextDataGenerator(config.n_way, config.k_shot*2, config.n_way, config.k_shot*2, config.dataset)
-    
+    data_generator = TextDataGenerator(config.n_way, config.k_shot*2, config.n_way, config.k_shot*2, config)
+    texts, labels = data_generator.sample_batch(config, "meta_train", meta_batch_size, shuffle=True, swap=False)
+
     # set up MAML model
     model = MAML(config,
                  num_inner_updates=num_inner_updates,
@@ -236,6 +238,11 @@ def run_maml(n_way=5, k_shot=1, meta_batch_size=25, meta_lr=0.001,
 
     exp_string = 'cls_'+str(n_way)+'.mbs_'+str(meta_batch_size) + '.k_shot_' + str(meta_train_k_shot) + '.inner_numstep_' + str(
         num_inner_updates) + '.inner_updatelr_' + str(meta_train_inner_update_lr) + '.learn_inner_update_lr_' + str(learn_inner_update_lr)
+
+    # # save model
+    # model_file = logdir + '/' + exp_string + '/model' + "0"
+    # print("Saving to ", model_file)
+    # model.save_weights(model_file)
 
     if meta_train:
         meta_train_fn(model, exp_string, data_generator, config,
@@ -258,7 +265,8 @@ if __name__ == "__main__":
              num_inner_updates=1,
              meta_train=True,
              meta_train_k_shot=1,
-             learn_inner_update_lr=False,
-             meta_train_iterations=100,
+             learn_inner_update_lr=True,
+             meta_train_iterations=10,
              meta_batch_size=2,
-             logdir='./logs/maml')
+             logdir='./logs/maml',
+             num_meta_test_points=10)

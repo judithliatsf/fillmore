@@ -44,7 +44,7 @@ class TextDataGeneratorTest(unittest.TestCase):
         cls.config = config
 
     def test_load_data(self):
-        data_generator = TextDataGenerator(self.n_way, self.k_shot*2, self.n_way, self.k_shot*2, self.dataset)
+        data_generator = TextDataGenerator(self.n_way, self.k_shot*2, self.n_way, self.k_shot*2, self.config)
         texts, labels = data_generator.sample_batch(self.config, "meta_train", self.meta_batch_size)
-        self.assertEquals(texts.shape, (5, 3, 4))
-        self.assertEquals(labels.shape, (5, 3, 4, 3))
+        self.assertEqual(texts.shape, (5, 3, 4))
+        self.assertEqual(labels.shape, (5, 3, 4, 3))
