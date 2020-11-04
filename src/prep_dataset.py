@@ -84,6 +84,8 @@ def get_clinc150_dataset():
 def main():
     get_distsig_dataset()
     get_clinc150_dataset()
+    print("delete rcv1 ...")
+    os.remove("../data/rcv1.json")
 
 if __name__ == "__main__":
     # execute only if run as a script
