@@ -11,15 +11,16 @@ class TextDataGenerator(object):
                  num_meta_test_classes, 
                  num_meta_test_samples_per_class, 
                  config,
-                 seed=123
+                 seed=123,
+                 encoder=None
                  ):
         self.num_samples_per_class = num_samples_per_class
         self.num_classes = num_classes
         self.num_meta_test_samples_per_class = num_meta_test_samples_per_class
         self.num_meta_test_classes = num_meta_test_classes
         self.dataset = config.dataset
-        # text_size = config.get('emb_size', 786)
-
+        self.emb_size = 768
+        self.encoder = encoder
         self.dim_input = 1 # "string"
         self.dim_output = self.num_classes
 
@@ -36,8 +37,8 @@ class TextDataGenerator(object):
 
         Args:
             args ([type]): [description]
-            batch_type ([str]): [description]
-            batch_size ([int]): [description]
+            batch_type ([str]): meta_train, meta_val or meta_test
+            batch_size ([int]): number of episodes
 
         Returns:
             A a tuple of (1) Text batch and (2) Label batch where
@@ -67,25 +68,15 @@ class TextDataGenerator(object):
                 for item in all_items:
                     texts.append(" ".join(item['text']))
                     labels.append(i)
-            texts = np.array(texts).astype(np.str)
-            texts = np.reshape(texts, (num_classes, num_samples_per_class)) # N, K, 1
+            if self.encoder is not None:
+                texts = self.encoder(texts) # tf.Tensor of size [N, emb_size]
+                texts = np.reshape(texts.numpy(), (num_classes, num_samples_per_class, self.emb_size))
+            else:
+                texts = np.array(texts).astype(np.str)
+                texts = np.reshape(texts, (num_classes, num_samples_per_class)) # N, K, 1
             labels = np.array(labels).astype(np.int32)
             labels = np.reshape(labels, (num_classes, num_samples_per_class))
             labels = np.eye(num_classes, dtype=np.float32)[labels] # N, K, N
-            
-            # batch = np.concatenate([texts, labels], 2)
-            # print(batch)
-            # if shuffle:
-            #     for p in range(num_samples_per_class):
-            #         np.random.shuffle(batch[:, p])
-            
-            # labels = batch[:, :, :num_classes]
-            # texts = batch[:, :, num_classes:]
-            # print(labels.shape)
-            # print(texts.shape)
-            # if swap:
-            #     labels = np.swapaxes(labels, 0, 1)
-            #     texts = np.swapaxes(texts, 0, 1)
 
             all_text_batches.append(texts)
             all_label_batches.append(labels)
