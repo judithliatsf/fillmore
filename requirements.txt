@@ -7,3 +7,4 @@ Pillow
 h5py==2.8.0
 scikit-learn==0.20.1
 scipy==1.1.0
+tensorflow-text==2.3.0
