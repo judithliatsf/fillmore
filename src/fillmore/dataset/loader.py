@@ -1,14 +1,7 @@
-import os
-import itertools
-import collections
 import json
-from collections import defaultdict
 from fillmore.dataset.utils import tprint
 
 import numpy as np
-
-from transformers import BertTokenizer
-
 
 def _get_clinc150_classes(args):
     '''
@@ -312,7 +305,7 @@ def _get_reuters_classes(args):
     return train_classes, val_classes, test_classes
 
 
-def _load_json(path):
+def _load_json(path, dataset):
     '''
         load data file
         @param path: str, path to the data file
@@ -333,10 +326,17 @@ def _load_json(path):
                 label[int(row['label'])] += 1
 
             item_label = int(row['label'])
-            item = {
-                'label': item_label,
-                'text': row['text'][:500]  # truncate the text to 500 tokens
-            }
+            
+            if dataset == "clinc150":
+                item = {
+                    'label': item_label,
+                    'text': row['raw']
+                }
+            else:
+                item = {
+                    'label': item_label,
+                    'text': row['text'][:500]  # truncate the text to 500 tokens
+                }
 
             text_len.append(len(row['text']))
 
@@ -413,10 +413,12 @@ def load_dataset(args):
         train_classes, val_classes, test_classes = _get_reuters_classes(args)
     elif args.dataset == 'rcv1':
         train_classes, val_classes, test_classes = _get_rcv1_classes(args)
+    elif args.dataset == 'clinc150':
+        train_classes, val_classes, test_classes = _get_clinc150_classes(args)
     else:
         raise ValueError(
             'args.dataset should be one of'
-            '[20newsgroup, amazon, fewrel, huffpost, reuters, rcv1]')
+            '[20newsgroup, amazon, fewrel, huffpost, reuters, rcv1, clinc150]')
 
     assert(len(train_classes) == args.n_train_class)
     assert(len(val_classes) == args.n_val_class)
@@ -429,7 +431,7 @@ def load_dataset(args):
         args.n_val_class = args.n_train_class
 
     tprint('Loading data')
-    all_data, data_by_class = _load_json(args.data_path)
+    all_data, data_by_class = _load_json(args.data_path, args.dataset)
 
     # # Split into meta-train, meta-val, meta-test data
     # train_data, val_data, test_data = _meta_split(
@@ -440,5 +442,5 @@ def load_dataset(args):
     return train_classes, val_classes, test_classes, data_by_class
 
 if __name__ == "__main__":
-    all_data, data_by_class = _load_json("data/reuters.json")
+    all_data, data_by_class = _load_json("data/clinc150.json", "clinc150")
     print(len(all_data))
