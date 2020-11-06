@@ -159,9 +159,61 @@ def _get_clinc150_classes(args):
         'order_checks': 148,
         'card_declined': 149}
 
-    train_classes = list(range(135))
-    val_classes = list(range(136, 140))
-    test_classes = list(range(141, 150))
+    domain_dict = {
+        'banking': ['transfer','transactions','balance', 'freeze_account', 'pay_bill', 'bill_balance',
+        'bill_due', 'interest_rate', 'routing', 'min_payment', 'order_checks', 'pin_change',
+        'report_fraud', 'account_blocked', 'spending_history'],
+
+        'credit_cards': ['credit_score', 'report_lost_card', 'credit_limit', 'rewards_balance', 'new_card',
+        'application_status', 'card_declined', 'international_fees', 'apr', 'redeem_rewards', 'credit_limit_change',
+        'damaged_card', 'replacement_card_duration', 'improve_credit_score', 'expiration_date'],
+
+        'kitchen_dining': ['recipe', 'restaurant_reviews', 'calories', 'nutrition_info', 'restaurant_suggestion',
+        'ingredients_list', 'ingredient_substitution', 'cook_time', 'food_last', 'meal_suggestion', 'restaurant_reservation',
+        'confirm_reservation', 'how_busy', 'cancel_reservation', 'accept_reservations'],
+
+        'home': ['shopping_list', 'shopping_list_update', 'next_song', 'play_music', 'update_playlist',
+        'todo_list', 'todo_list_update', 'calendar', 'calendar_update', 'what_song', 'order', 'order_status',
+        'reminder', 'reminder_update', 'smart_home'],
+
+        'auto_commute': ['traffic', 'directions', 'gas', 'gas_type', 'distance', 'current_location',
+        'mpg', 'oil_change_when', 'oil_change_how', 'jump_start', 'uber', 'schedule_maintenance',
+        'last_maintenance', 'tire_pressure', 'tire_change'],
+
+        'travel': ['book_flight', 'book_hotel', 'car_rental', 'travel_suggestion', 'travel_alert',
+        'travel_notification', 'carry_on', 'timezone', 'vaccines', 'translate', 'flight_status',
+        'international_visa', 'lost_luggage', 'plug_type', 'exchange_rate'],
+
+        'utility': ['time', 'alarm', 'share_location', 'find_phone', 'weather', 'text',
+        'spelling', 'make_call', 'timer', 'date', 'calculator', 'measurement_conversion', 
+        'flip_coin', 'roll_dice', 'definition'],
+
+        'work': ['direct_deposit', 'pto_request', 'taxes', 'payday', 'w2', 'pto_balance',
+        'pto_request_status', 'next_holiday', 'insurance', 'insurance_change', 'schedule_meeting',
+        'pto_used', 'meeting_schedule', 'rollover_401k', 'income'],
+
+        'small_talk': ['greeting', 'goodbye', 'tell_joke', 'where_are_you_from', 'how_old_are_you',
+        'what_is_your_name', 'who_made_you', 'thank_you', 'what_can_i_ask_you', 'what_are_your_hobbies',
+        'do_you_have_pets', 'are_you_a_bot', 'meaning_of_life', 'who_do_you_work_for', 'fun_fact'],
+
+        'meta': ['change_ai_name', 'change_user_name', 'cancel', 'user_name', 'reset_settings', 'whisper_mode',
+        'repeat', 'no', 'yes', 'maybe', 'change_language', 'change_accent', 'change_volume', 
+        'change_speed', 'sync_device']
+    }
+
+    if hasattr(args, 'domains'):
+        print("get tasks from domains: {}".format(args.domains))
+        train_classes, val_classes, test_classes = [], [], []
+        for domain in args.domains:
+            task_names =  domain_dict[domain]
+            task_ids = [label_dict[task_name] for task_name in task_names]
+            train_classes.extend(task_ids)
+            val_classes.extend(task_ids)
+            test_classes.extend(task_ids)
+    else:
+        train_classes = list(range(len(label_dict)))
+        val_classes = list(range(len(label_dict)))
+        test_classes = list(range(len(label_dict)))
 
     return train_classes, val_classes, test_classes
 
@@ -330,12 +382,14 @@ def _load_json(path, dataset):
             if dataset == "clinc150":
                 item = {
                     'label': item_label,
-                    'text': row['raw']
+                    'text': row['raw'],
+                    'tokens': row['text']
                 }
             else:
                 item = {
                     'label': item_label,
-                    'text': row['text'][:500]  # truncate the text to 500 tokens
+                    'text': " ".join(row['text'][:500]),  
+                    'tokens': row['text'][:500] # truncate the text to 500 tokens
                 }
 
             text_len.append(len(row['text']))
@@ -373,33 +427,6 @@ def _load_json(path, dataset):
 #         words += example['text']
 #     return words
 
-
-# def _meta_split(all_data, train_classes, val_classes, test_classes):
-#     '''
-#         Split the dataset according to the specified train_classes, val_classes
-#         and test_classes
-
-#         @param all_data: list of examples (dictionaries)
-#         @param train_classes: list of int
-#         @param val_classes: list of int
-#         @param test_classes: list of int
-
-#         @return train_data: list of examples
-#         @return val_data: list of examples
-#         @return test_data: list of examples
-#     '''
-#     train_data, val_data, test_data = [], [], []
-
-#     for example in all_data:
-#         if example['label'] in train_classes:
-#             train_data.append(example)
-#         if example['label'] in val_classes:
-#             val_data.append(example)
-#         if example['label'] in test_classes:
-#             test_data.append(example)
-
-#     return train_data, val_data, test_data
-
 def load_dataset(args):
     if args.dataset == '20newsgroup':
         train_classes, val_classes, test_classes = _get_20newsgroup_classes(args)
@@ -420,27 +447,60 @@ def load_dataset(args):
             'args.dataset should be one of'
             '[20newsgroup, amazon, fewrel, huffpost, reuters, rcv1, clinc150]')
 
-    assert(len(train_classes) == args.n_train_class)
-    assert(len(val_classes) == args.n_val_class)
-    assert(len(test_classes) == args.n_test_class)
+    args.n_train_class = len(train_classes)
+    args.n_val_class = len(val_classes)
+    args.n_test_class = len(test_classes) 
 
-    if args.mode == 'finetune':
-        # in finetune, we combine train and val for training the base classifier
-        train_classes = train_classes + val_classes
-        args.n_train_class = args.n_train_class + args.n_val_class
-        args.n_val_class = args.n_train_class
+    tprint('#train classes {}, #val classes {}, #test classes {}'.format(args.n_train_class, args.n_val_class, args.n_test_class))
+    
+    # if args.mode == 'finetune':
+    #     # in finetune, we combine train and val for training the base classifier
+    #     train_classes = train_classes + val_classes
+    #     args.n_train_class = args.n_train_class + args.n_val_class
+    #     args.n_val_class = args.n_train_class
 
     tprint('Loading data')
     all_data, data_by_class = _load_json(args.data_path, args.dataset)
 
-    # # Split into meta-train, meta-val, meta-test data
-    # train_data, val_data, test_data = _meta_split(
-    #         all_data, train_classes, val_classes, test_classes)
-    # tprint('#train {}, #val {}, #test {}'.format(
-    #     len(train_data), len(val_data), len(test_data)))
+    # Split into meta-train, meta-val, meta-test data
+    if args.dataset == 'clinc150':
+        # all the train, val, test data contains all 150 in-scope domains
+        # train:val:test = 100:20:30
+        # this ensure no examples shared by train, val and test
+        train_data_by_class, val_data_by_class, test_data_by_class = {}, {}, {}
+        
+        for task_id in train_classes:
+            train_data_by_class[task_id] = data_by_class[task_id][:100]
+        
+        for task_id in val_classes:
+            val_data_by_class[task_id] = data_by_class[task_id][100:120]
+        
+        for task_id in test_classes:
+            test_data_by_class[task_id] = data_by_class[task_id][120:]
 
-    return train_classes, val_classes, test_classes, data_by_class
+    else:
+        train_data_by_class, val_data_by_class, test_data_by_class = {}, {}, {}
+
+        for task_id, examples in data_by_class.items():
+            if task_id in train_classes:
+                train_data_by_class[task_id] = examples
+            elif task_id in val_classes:
+                val_data_by_class[task_id] = examples
+            elif task_id in test_classes:
+                test_data_by_class[task_id] = examples
+
+    tprint('#train {}, #val {}, #test {}'.format(
+        len([item for items in train_data_by_class.values() for item in items]), 
+        len([item for items in val_data_by_class.values() for item in items]), 
+        len([item for items in test_data_by_class.values() for item in items])))
+
+    return train_data_by_class, val_data_by_class, test_data_by_class
 
 if __name__ == "__main__":
-    all_data, data_by_class = _load_json("data/clinc150.json", "clinc150")
-    print(len(all_data))
+    from transformers import BertConfig
+    config = BertConfig.from_dict({
+        'dataset': 'clinc150',
+        'domains': ['banking'], 
+        'data_path': "data/clinc150.json"
+    })
+    train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)
