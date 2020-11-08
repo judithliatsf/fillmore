@@ -208,21 +208,32 @@ def _get_clinc150_classes(args):
         train_classes = [label_dict[task_name] for domain in train_domains for task_name in domain_dict[domain]]
         val_classes = [label_dict[task_name] for domain in val_domains for task_name in domain_dict[domain]]
         test_classes = [label_dict[task_name] for domain in test_domains for task_name in domain_dict[domain]]
-    else:
-        if hasattr(args, 'domains'):
+    
+    elif args.dataset == 'clinc150a': # same domain across train, val and test, but different tasks
+        if hasattr(args, 'domains') and len(args.domains)>0:
+            print("get tasks from domains: {}".format(args.domains))
+            domains = args.domains
+        else:
+            domains = domain_dict.keys()
+        
+        train_classes, val_classes, test_classes = [], [], []
+        for domain in domains:
+            task_names =  domain_dict[domain]
+            task_ids = [label_dict[task_name] for task_name in task_names]
+            train_classes.extend(task_ids[:10])
+            val_classes.extend(task_ids[10:12])
+            test_classes.extend(task_ids[12:])     
+    
+    else: # same domain, same tasks but different examples distribution
+        if hasattr(args, 'domains') and len(args.domains) > 0:
             print("get tasks from domains: {}".format(args.domains))
             train_classes, val_classes, test_classes = [], [], []
             for domain in args.domains:
                 task_names =  domain_dict[domain]
                 task_ids = [label_dict[task_name] for task_name in task_names]
-                if args.dataset == 'clinc150': # same domain, same tasks but different examples distribution
-                    train_classes.extend(task_ids)
-                    val_classes.extend(task_ids)
-                    test_classes.extend(task_ids)
-                elif args.dataset == 'clinc150a': # same domain across train, val and test, but different tasks
-                    train_classes.extend(task_ids[:10])
-                    val_classes.extend(task_ids[10:12])
-                    test_classes.extend(task_ids[12:])     
+                train_classes.extend(task_ids)
+                val_classes.extend(task_ids)
+                test_classes.extend(task_ids)
         else:
             train_classes = list(range(len(label_dict)))
             val_classes = list(range(len(label_dict)))
@@ -513,7 +524,6 @@ if __name__ == "__main__":
     from transformers import BertConfig
     config = BertConfig.from_dict({
         'dataset': 'clinc150a',
-        'domain': ['banking'],
         'data_path': "data/clinc150.json"
     })
     train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)

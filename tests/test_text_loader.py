@@ -37,7 +37,19 @@ class TextDataGeneratorTest(unittest.TestCase):
         self.assertEqual(self.config.n_train_class, 15)
         self.assertEqual(self.config.n_val_class, 15)
         self.assertEqual(self.config.n_test_class, 15)
-    
+
+    def test_load_clinc150a(self):
+        self.config.dataset = "clinc150a"
+        self.config.data_path = "data/clinc150.json"
+        self.config.domains = []
+        data_generator = TextDataGenerator(self.n_way, self.k_shot*2, self.n_way, self.k_shot*2, self.config)
+        texts, labels = data_generator.sample_batch(self.config, "meta_train", self.meta_batch_size)
+        self.assertEqual(texts.shape, (5, 3, 4))
+        self.assertEqual(labels.shape, (5, 3, 4, 3))
+        self.assertEqual(self.config.n_train_class, 100)
+        self.assertEqual(self.config.n_val_class, 20)
+        self.assertEqual(self.config.n_test_class, 30)
+
     def test_encode_text(self):
         self.config.dataset = "reuters"
         self.config.data_path = "data/reuters.json"
