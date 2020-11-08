@@ -203,23 +203,24 @@ def run_maml(n_way=5, k_shot=1, meta_batch_size=25, meta_lr=0.001,
              resume=False, resume_itr=0, log=True, logdir='/tmp/data',
              data_path='./omniglot_resized', meta_train=True,
              meta_train_iterations=15000, meta_train_k_shot=-1,
-             meta_train_inner_update_lr=-1, num_meta_test_points=10):
+             meta_train_inner_update_lr=-1, num_meta_test_points=10, config=None):
 
     # model config
-    config = BertConfig.from_pretrained("bert-base-uncased")
-    config.num_labels = n_way
-    config.vocab_path = "/Users/yue.li/Desktop/repo/Personal/fillmore/tests/fixtures/vocab.txt"
-    config.max_seq_len = 32
-    config.mode="finetune" #TODO
-    config.dataset = "reuters"
-    config.n_train_class = 15
-    config.n_val_class = 5
-    config.n_test_class = 11
-    config.data_path = "data/reuters.json"
-    config.n_way = n_way
-    config.k_shot = k_shot
-    config.meta_batch_size = meta_batch_size
-    config.num_meta_test_points = num_meta_test_points
+    if not config:
+        config = BertConfig.from_pretrained("bert-base-uncased")
+        config.num_labels = n_way
+        config.vocab_path = "/Users/yue.li/Desktop/repo/Personal/fillmore/tests/fixtures/vocab.txt"
+        config.max_seq_len = 32
+        config.mode="finetune" #TODO
+        config.dataset = "reuters"
+        config.n_train_class = 15
+        config.n_val_class = 5
+        config.n_test_class = 11
+        config.data_path = "data/reuters.json"
+        config.n_way = n_way
+        config.k_shot = k_shot
+        config.meta_batch_size = meta_batch_size
+        config.num_meta_test_points = num_meta_test_points
 
     # call data_generator and get data with k_shot*2 samples per class
     data_generator = TextDataGenerator(config.n_way, config.k_shot*2, config.n_way, config.k_shot*2, config)
