@@ -201,19 +201,32 @@ def _get_clinc150_classes(args):
         'change_speed', 'sync_device']
     }
 
-    if hasattr(args, 'domains'):
-        print("get tasks from domains: {}".format(args.domains))
-        train_classes, val_classes, test_classes = [], [], []
-        for domain in args.domains:
-            task_names =  domain_dict[domain]
-            task_ids = [label_dict[task_name] for task_name in task_names]
-            train_classes.extend(task_ids)
-            val_classes.extend(task_ids)
-            test_classes.extend(task_ids)
+    if args.dataset == 'clinc150b':
+        train_domains = ['banking', 'kitchen_dining', 'home', 'auto_commute', 'small_talk']
+        val_domains = ['utility', 'credit_cards']
+        test_domains = ['travel', 'work', 'meta']
+        train_classes = [label_dict[task_name] for domain in train_domains for task_name in domain_dict[domain]]
+        val_classes = [label_dict[task_name] for domain in val_domains for task_name in domain_dict[domain]]
+        test_classes = [label_dict[task_name] for domain in test_domains for task_name in domain_dict[domain]]
     else:
-        train_classes = list(range(len(label_dict)))
-        val_classes = list(range(len(label_dict)))
-        test_classes = list(range(len(label_dict)))
+        if hasattr(args, 'domains'):
+            print("get tasks from domains: {}".format(args.domains))
+            train_classes, val_classes, test_classes = [], [], []
+            for domain in args.domains:
+                task_names =  domain_dict[domain]
+                task_ids = [label_dict[task_name] for task_name in task_names]
+                if args.dataset == 'clinc150': # same domain, same tasks but different examples distribution
+                    train_classes.extend(task_ids)
+                    val_classes.extend(task_ids)
+                    test_classes.extend(task_ids)
+                elif args.dataset == 'clinc150a': # same domain across train, val and test, but different tasks
+                    train_classes.extend(task_ids[:10])
+                    val_classes.extend(task_ids[10:12])
+                    test_classes.extend(task_ids[12:])     
+        else:
+            train_classes = list(range(len(label_dict)))
+            val_classes = list(range(len(label_dict)))
+            test_classes = list(range(len(label_dict)))
 
     return train_classes, val_classes, test_classes
 
@@ -440,7 +453,7 @@ def load_dataset(args):
         train_classes, val_classes, test_classes = _get_reuters_classes(args)
     elif args.dataset == 'rcv1':
         train_classes, val_classes, test_classes = _get_rcv1_classes(args)
-    elif args.dataset == 'clinc150':
+    elif 'clinc150' in args.dataset:
         train_classes, val_classes, test_classes = _get_clinc150_classes(args)
     else:
         raise ValueError(
@@ -499,9 +512,8 @@ def load_dataset(args):
 if __name__ == "__main__":
     from transformers import BertConfig
     config = BertConfig.from_dict({
-        'dataset': 'clinc150',
-        'domains': ['banking'], 
+        'dataset': 'clinc150a',
+        'domain': ['banking'],
         'data_path': "data/clinc150.json"
     })
     train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)
-    import pdb; pdb.set_trace()
