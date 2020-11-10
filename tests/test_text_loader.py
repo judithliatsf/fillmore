@@ -42,6 +42,7 @@ class TextDataGeneratorTest(unittest.TestCase):
         self.config.dataset = "clinc150a"
         self.config.data_path = "data/clinc150.json"
         self.config.domains = []
+        self.config.num_examples_from_class = 20
         data_generator = TextDataGenerator(self.n_way, self.k_shot*2, self.n_way, self.k_shot*2, self.config)
         texts, labels = data_generator.sample_batch(self.config, "meta_train", self.meta_batch_size)
         self.assertEqual(texts.shape, (5, 3, 4))

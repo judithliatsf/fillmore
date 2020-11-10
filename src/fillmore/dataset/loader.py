@@ -507,11 +507,20 @@ def load_dataset(args):
 
         for task_id, examples in data_by_class.items():
             if task_id in train_classes:
-                train_data_by_class[task_id] = examples
+                if hasattr(args, 'num_examples_from_class'):
+                    train_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                else:
+                    train_data_by_class[task_id] = examples
             elif task_id in val_classes:
-                val_data_by_class[task_id] = examples
+                if hasattr(args, "num_examples_from_class"):
+                    val_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                else:
+                    val_data_by_class[task_id] = examples
             elif task_id in test_classes:
-                test_data_by_class[task_id] = examples
+                if hasattr(args, "num_examples_from_class"):
+                    test_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                else:
+                    test_data_by_class[task_id] = examples
 
     tprint('#train {}, #val {}, #test {}'.format(
         len([item for items in train_data_by_class.values() for item in items]), 
@@ -523,7 +532,8 @@ def load_dataset(args):
 if __name__ == "__main__":
     from transformers import BertConfig
     config = BertConfig.from_dict({
-        'dataset': 'clinc150a',
-        'data_path': "data/clinc150.json"
+        'dataset': 'clinc150b',
+        'data_path': "data/clinc150.json",
+        "num_examples_from_class": 20
     })
     train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)
