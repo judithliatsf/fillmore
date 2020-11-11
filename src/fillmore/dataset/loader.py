@@ -1,7 +1,28 @@
+from copy import Error
 import json
 from fillmore.dataset.utils import tprint
 
 import numpy as np
+
+def _get_smlmt_classes(args):
+    """Return a list of class integers for training, class is generated from smlmt
+
+    Args:
+        args (AutoConfig): a config instance with attributes
+
+    Returns:
+        train_classes List[int]: list of class index
+    """
+    if "smlmt_clinc150.json" in args.data_path:
+        train_classes = list(range(405))
+    elif "smlmt_clinc150small.json" in args.data_path:
+        train_classes = list(range(325))
+    else:
+        print("data_path is not properly defined")
+        train_classes = []
+    val_classes = []
+    test_classes = []
+    return train_classes, val_classes, test_classes
 
 def _get_clinc150_classes(args):
     '''
@@ -466,16 +487,12 @@ def load_dataset(args):
         train_classes, val_classes, test_classes = _get_rcv1_classes(args)
     elif 'clinc150' in args.dataset:
         train_classes, val_classes, test_classes = _get_clinc150_classes(args)
+    elif args.dataset == 'smlmt':
+        train_classes, val_classes, test_classes = _get_smlmt_classes(args)
     else:
         raise ValueError(
             'args.dataset should be one of'
             '[20newsgroup, amazon, fewrel, huffpost, reuters, rcv1, clinc150]')
-
-    args.n_train_class = len(train_classes)
-    args.n_val_class = len(val_classes)
-    args.n_test_class = len(test_classes) 
-
-    tprint('#train classes {}, #val classes {}, #test classes {}'.format(args.n_train_class, args.n_val_class, args.n_test_class))
     
     # if args.mode == 'finetune':
     #     # in finetune, we combine train and val for training the base classifier
@@ -508,19 +525,29 @@ def load_dataset(args):
         for task_id, examples in data_by_class.items():
             if task_id in train_classes:
                 if hasattr(args, 'num_examples_from_class'):
-                    train_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                    if len(examples) >= args.num_examples_from_class:
+                        train_data_by_class[task_id] = examples[:args.num_examples_from_class]
                 else:
                     train_data_by_class[task_id] = examples
             elif task_id in val_classes:
                 if hasattr(args, "num_examples_from_class"):
-                    val_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                    if len(examples) >= args.num_examples_from_class:
+                        val_data_by_class[task_id] = examples[:args.num_examples_from_class]
                 else:
                     val_data_by_class[task_id] = examples
             elif task_id in test_classes:
                 if hasattr(args, "num_examples_from_class"):
-                    test_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                    if len(examples) >= args.num_examples_from_class:
+                        test_data_by_class[task_id] = examples[:args.num_examples_from_class]
                 else:
                     test_data_by_class[task_id] = examples
+
+    args.n_train_class = len(train_data_by_class)
+    args.n_val_class = len(val_data_by_class)
+    args.n_test_class = len(test_data_by_class) 
+
+    tprint('#train classes {}, #val classes {}, #test classes {}'.format(
+        args.n_train_class, args.n_val_class, args.n_test_class))
 
     tprint('#train {}, #val {}, #test {}'.format(
         len([item for items in train_data_by_class.values() for item in items]), 
@@ -532,8 +559,8 @@ def load_dataset(args):
 if __name__ == "__main__":
     from transformers import BertConfig
     config = BertConfig.from_dict({
-        'dataset': 'clinc150b',
-        'data_path': "data/clinc150.json",
+        'dataset': 'smlmt',
+        'data_path': "data/smlmt_clinc150.json",
         "num_examples_from_class": 20
     })
     train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)

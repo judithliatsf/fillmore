@@ -72,6 +72,8 @@ def run_protonet(config, n_way=20, k_shot=1, n_query=5,
   # call DataGenerator with k_shot+n_query samples per class
   data_generator = TextDataGenerator(
       n_way, k_shot+n_query, n_meta_test_way, k_meta_test_shot+n_meta_test_query, config)
+  smlmt_generator = TextDataGenerator(
+      n_way, k_shot+n_query, n_meta_test_way, k_meta_test_shot+n_meta_test_query, config)
 
   if meta_train:
 

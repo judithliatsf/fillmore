@@ -1,6 +1,7 @@
 from transformers import TFBertPreTrainedModel, TFBertMainLayer
 from fillmore.bert_featurizer import BertSingleSentenceFeaturizer
 import tensorflow as tf
+from transformers import AutoTokenizer
 
 
 class BertTextClassification(TFBertPreTrainedModel):
@@ -52,3 +53,19 @@ class BertTextEncoder(TFBertPreTrainedModel):
         outputs = self.bert(inputs)
         pooled_output = outputs[1]
         return pooled_output
+
+class BertTextEncoderWrapper(TFBertPreTrainedModel):
+    def __init__(self, config, *inputs, **kwargs):
+        super().__init__(config, *inputs, **kwargs)
+        self.num_labels = config.num_labels
+        self.max_seq_len = config.max_seq_len
+        self.encoder = BertTextEncoder(config)
+        self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+
+    def call(self, inputs):
+        features = self.tokenizer.batch_encode_plus(
+                    batch_text_or_text_pairs=inputs, 
+                    truncation=True, 
+                    padding=True, max_length=self.max_seq_len, return_tensors='tf')
+        outputs = self.encoder(features)
+        return outputs
