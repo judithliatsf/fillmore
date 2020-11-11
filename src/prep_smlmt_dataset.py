@@ -8,70 +8,86 @@ import glob
 import pandas as pd
 from collections import defaultdict
 
+from transformers import AutoTokenizer
 
-def get_smlmt(data_path):
+tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+
+def get_smlmt(data_path, filename):
+    data_path = os.path.join(data_path, filename)
     print("reading "+data_path)
 
-    word_dict = defaultdict(int) 
     linc = 0
     all_sentences = set()
     # for each word, how man sentences contain this word
     with open(data_path, 'r', errors='ignore') as f:
         data = []
-        data_by_class = {}
+        word_dict = {} # dict with token as key, and list of sentences as values
         for line in f:
             linc += 1
-            linset = {}
             row = json.loads(line)
-            all_sentences.add(" ".join(row['text']))
-            for word in row['text']:
-                if word not in linset:
-                    word_dict[word] += 1
-
-    # how many words (v) appeared in how many sentences (k)
-    wcd = defaultdict(int) 
-    for c in word_dict.values():
-        wcd[c] += 1
+            all_sentences.add(row["raw"])
+            tokens = tokenizer.tokenize(row["raw"])
+            for word in tokens:
+                json_dict = {
+                    "text": tokens,
+                    "raw": row["raw"].replace(word, "[MASK]"),
+                    "word": word 
+                }
+                if word not in word_dict:
+                    word_dict[word] = [json_dict]
+                else:
+                    word_dict[word].append(json_dict)
     
     # take words with more than 30 samples smaller than 100 samples
-    n_samples = 30
     label = 0
     label_map = {}
     json_strs = []
     labeled_sentences = set()
-    while n_samples < 100:
-        for w in [w for w,c in word_dict.items() if c == n_samples and len(w)>=3]: 
-            label_map[w] = label
-            for sentence in all_sentences:
-                if sentence not in labeled_sentences:
-                    word_list = sentence.split()
-                    # filter out masking word
-                    token_list = list(filter(lambda token: token != w, word_list))
-                    json_dict = {'text': token_list,
-                                'label': label}
-                    json_str = json.dumps(json_dict)
-                    json_strs.append(json_str+'\n')
-                    labeled_sentences.add(sentence)
-            label += 1
-        n_samples += 1
+    no_label_map = {}
+    for w, items in word_dict.items():
 
-    print("writing "+"smlmt_"+data_path)
-    txtfile = open("smlmt_"+data_path, 'w')
+        if len(w) >=3 and len(items) >=30 and len(items) < 100:
+            has_example = False
+            for item in items:
+                if item["raw"] not in labeled_sentences:
+                    item["label"] = label
+                    json_str = json.dumps(item)
+                    json_strs.append(json_str+'\n')
+                    labeled_sentences.add(item["raw"])
+                    has_example = True
+            if has_example:
+                label_map[w] = label            
+                label = label + 1
+            else:
+                no_label_map[w] = len(items)
+        else:
+            no_label_map[w] = len(items)
+
+    print("writing "+"smlmt_"+filename)
+    txtfile = open("smlmt_"+filename, 'w')
     txtfile.writelines(json_strs)
     txtfile.close()
     
     label_str = json.dumps(label_map)
-    labelfile = open("smlmt_label_"+data_path, 'w')
-    labelfile.writelines(json_strs)
+    labelfile = open("smlmt_label_"+filename, 'w')
+    labelfile.writelines(label_str)
+    labelfile.close()
+
+    no_label_str = json.dumps(no_label_map)
+    labelfile = open("smlmt_no_label_"+filename, 'w')
+    labelfile.writelines(no_label_str)
     labelfile.close()
 
 def main():
     os.chdir("../data")
     data_files = glob.glob("*.json")
     for f in data_files:
-        get_smlmt(f)
+        get_smlmt("../data", f)
 
 
 if __name__ == "__main__":
     # execute only if run as a script
-    main()
+    # main()
+
+    # execute from root
+    get_smlmt("data/", "clinc150small.json")
