@@ -229,6 +229,14 @@ def _get_clinc150_classes(args):
         train_classes = [label_dict[task_name] for domain in train_domains for task_name in domain_dict[domain]]
         val_classes = [label_dict[task_name] for domain in val_domains for task_name in domain_dict[domain]]
         test_classes = [label_dict[task_name] for domain in test_domains for task_name in domain_dict[domain]]
+
+    elif args.dataset == 'clinc150c':
+        train_domains = ['banking', 'kitchen_dining', 'home', 'auto_commute', 'small_talk']
+        val_domains = ['utility', 'credit_cards']
+        test_domains = ['travel', 'work', 'meta']
+        train_classes = [label_dict[task_name] for domain in train_domains for (i, task_name) in enumerate(domain_dict[domain]) if i < 5]
+        val_classes = [label_dict[task_name] for domain in val_domains for task_name in domain_dict[domain]]
+        test_classes = [label_dict[task_name] for domain in test_domains for task_name in domain_dict[domain]]
     
     elif args.dataset == 'clinc150a': # same domain across train, val and test, but different tasks
         if hasattr(args, 'domains') and len(args.domains)>0:
@@ -559,8 +567,8 @@ def load_dataset(args):
 if __name__ == "__main__":
     from transformers import BertConfig
     config = BertConfig.from_dict({
-        'dataset': 'smlmt',
-        'data_path': "data/smlmt_clinc150.json",
+        'dataset': 'clinc150c',
+        'data_path': "data/clinc150.json",
         "num_examples_from_class": 20
     })
     train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)

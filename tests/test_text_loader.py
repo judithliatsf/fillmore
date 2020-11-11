@@ -1,6 +1,5 @@
 import unittest
 from fillmore.dataset.load_text import TextDataGenerator
-from fillmore.bert_model import BertTextEncoderWrapper
 from transformers import AutoConfig
 import os
 
@@ -69,7 +68,7 @@ class TextDataGeneratorTest(unittest.TestCase):
         self.config.dataset = "reuters"
         self.config.data_path = "data/reuters.json"
 
-        from fillmore.bert_model import BertTextEncoder
+        from fillmore.bert_model import BertTextEncoderWrapper
         encoder = BertTextEncoderWrapper(self.config)
         data_generator = TextDataGenerator(self.n_way, self.k_shot*2, self.n_way, self.k_shot*2, self.config, encoder=encoder)
         texts, labels = data_generator.sample_batch(self.config, "meta_train", self.meta_batch_size)

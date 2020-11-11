@@ -8,6 +8,7 @@ from fillmore.bert_model import BertTextEncoder
 from fillmore.dataset.load_text import TextDataGenerator
 from transformers import AutoConfig
 from transformers import AutoTokenizer
+import copy
 
 tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
 
@@ -58,7 +59,8 @@ def run_protonet(config, n_way=20, k_shot=1, n_query=5,
                  n_meta_test_way=20, k_meta_test_shot=5, n_meta_test_query=5, 
                  logdir="./proto", meta_train=True,
                  n_epochs=20, n_episodes=100, n_meta_test_episodes=1000, 
-                 checkpoint_name=None, lr_scheduler=False):
+                 checkpoint_name=None, lr_scheduler=False, 
+                 smlmt=False, smlmt_ratio=0.5, smlmt_data_path="data/smlmt_clinc150small.json"):
 
   exp_string = 'cls_'+str(n_way)+'.eps_'+str(n_episodes) + \
                           '.k_shot_' + str(k_shot) + '.n_query_' + str(n_query)
@@ -72,8 +74,13 @@ def run_protonet(config, n_way=20, k_shot=1, n_query=5,
   # call DataGenerator with k_shot+n_query samples per class
   data_generator = TextDataGenerator(
       n_way, k_shot+n_query, n_meta_test_way, k_meta_test_shot+n_meta_test_query, config)
-  smlmt_generator = TextDataGenerator(
-      n_way, k_shot+n_query, n_meta_test_way, k_meta_test_shot+n_meta_test_query, config)
+
+  if smlmt:
+    smlmt_config = copy.deepcopy(config)
+    smlmt_config.dataset = "smlmt"
+    smlmt_config.data_path = smlmt_data_path  
+    smlmt_generator = TextDataGenerator(
+        n_way, k_shot+n_query, n_meta_test_way, k_meta_test_shot+n_meta_test_query, smlmt_config)
 
   if meta_train:
 
@@ -92,7 +99,14 @@ def run_protonet(config, n_way=20, k_shot=1, n_query=5,
           #############################
           # sample a batch of training data and partition it into
           # support and query sets
-          texts_train, labels_train = data_generator.sample_batch(config, 'meta_train', 1)
+          if not smlmt:
+            texts_train, labels_train = data_generator.sample_batch(config, 'meta_train', 1)
+          else:
+            lucky_number = np.random.random_sample()
+            if lucky_number < smlmt_ratio:
+              texts_train, labels_train = smlmt_generator.sample_batch(smlmt_config, 'meta_train', 1)
+            else:
+              texts_train, labels_train = data_generator.sample_batch(config, 'meta_train', 1)
           texts = texts_train[0]
           labels = labels_train[0]
           N, K = texts.shape
@@ -174,7 +188,7 @@ if __name__ == "__main__":
   config = AutoConfig.from_pretrained("bert-base-uncased")
   config.mode="proto"
   config.dataset = "clinc150a"
-  config.data_path = "data/clinc150.json"
+  config.data_path = "data/clinc150small.json"
   config.vocab_path = "data/vocab.txt"
   config.max_seq_len = 16
   config.learning_rate = 1e-5
@@ -188,7 +202,7 @@ if __name__ == "__main__":
   config.n_meta_test_way = 5
   config.k_meta_test_shot = 10
   config.n_meta_test_query = 10
-  config.n_episodes = 2
+  config.n_episodes = 4
   config.n_epochs = 3
   config.n_meta_test_episodes = 2
   config.lr_scheduler = True
@@ -198,4 +212,5 @@ if __name__ == "__main__":
             n_meta_test_way=config.n_meta_test_way, k_meta_test_shot=config.k_meta_test_shot, n_meta_test_query=config.n_meta_test_query,
             logdir=logdir, meta_train=True, 
             n_epochs=config.n_epochs, n_episodes=config.n_episodes, n_meta_test_episodes=config.n_meta_test_episodes, 
-            checkpoint_name=None, lr_scheduler=config.lr_scheduler)
+            checkpoint_name=None, lr_scheduler=config.lr_scheduler, 
+            smlmt=True, smlmt_ratio=0.5, smlmt_data_path="data/smlmt_clinc150small.json")
