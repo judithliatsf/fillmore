@@ -39,21 +39,16 @@ class BertTextEncoder(TFBertPreTrainedModel):
     def __init__(self, config, *inputs, **kwargs):
         super().__init__(config, *inputs, **kwargs)
         self.num_labels = config.num_labels
-        self.vocab_path = config.vocab_path
         self.max_seq_len = config.max_seq_len
-        self.tokenizer = BertSingleSentenceFeaturizer(
-            self.vocab_path,
-            max_sen_len=self.max_seq_len
-        )
-        self.dummy_text_inputs = tf.constant(
-            ["the son of flynn", "more than just a man"])
+        self.dummy_text_inputs = {
+        'input_ids': tf.constant([[101, 2365, 1997, 13259, 102], [101, 2365, 1997, 103, 102]], dtype=tf.int32), 
+        'token_type_ids': tf.constant([[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]], dtype=tf.int32), 
+        'attention_mask': tf.constant([[1, 1, 1, 1, 1], [1, 1, 1, 1, 1]], dtype=tf.int32)}
 
         # layer definition
         self.bert = TFBertMainLayer(config, name="bert")
 
-    def call(self, inputs, training=False):
-        # transform to features
-        features = self.tokenizer(inputs)
-        outputs = self.bert(features)
+    def call(self, inputs):
+        outputs = self.bert(inputs)
         pooled_output = outputs[1]
         return pooled_output
