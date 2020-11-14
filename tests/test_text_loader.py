@@ -60,7 +60,7 @@ class TextDataGeneratorTest(unittest.TestCase):
         texts, labels = data_generator.sample_batch(self.config, "meta_train", self.meta_batch_size)
         self.assertEqual(texts.shape, (5, 3, 4))
         self.assertEqual(labels.shape, (5, 3, 4, 3))
-        self.assertEqual(self.config.n_train_class, 324)
+        self.assertEqual(self.config.n_train_class, 325)
         self.assertEqual(self.config.n_val_class, 0)
         self.assertEqual(self.config.n_test_class, 0)
 
