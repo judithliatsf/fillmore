@@ -412,7 +412,7 @@ def _load_json(path, dataset):
 
             item_label = int(row['label'])
             
-            if dataset == "clinc150":
+            if "raw" in row.keys():
                 item = {
                     'label': item_label,
                     'raw': row['raw'],
@@ -582,5 +582,10 @@ if __name__ == "__main__":
     config = BertConfig.from_dict({
         'dataset': 'smlmt',
         'data_path': "data/smlmt_clinc150_pre_smlmt.json"
+    })
+    config = BertConfig.from_dict({
+        'dataset': 'clinc150c',
+        'data_path': "data/clinc150.json",
+        'num_examples_from_class': 20
     })
     train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)
