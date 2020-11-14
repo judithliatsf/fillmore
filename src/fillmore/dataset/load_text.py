@@ -68,7 +68,7 @@ class TextDataGenerator(object):
             for i, c in enumerate(sampled_classes):
                 all_items = random.sample(data_by_class[c], num_samples_per_class)
                 for item in all_items:
-                    texts.append(item['text'])
+                    texts.append(item['raw'])
                     labels.append(i)
             if self.encoder is not None:
                 texts = self.encoder(texts) # tf.Tensor of size [N, emb_size]

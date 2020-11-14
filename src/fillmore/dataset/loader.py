@@ -4,26 +4,6 @@ from fillmore.dataset.utils import tprint
 
 import numpy as np
 
-def _get_smlmt_classes(args):
-    """Return a list of class integers for training, class is generated from smlmt
-
-    Args:
-        args (AutoConfig): a config instance with attributes
-
-    Returns:
-        train_classes List[int]: list of class index
-    """
-    if "smlmt_clinc150.json" in args.data_path:
-        train_classes = list(range(405))
-    elif "smlmt_clinc150small.json" in args.data_path:
-        train_classes = list(range(325))
-    else:
-        print("data_path is not properly defined")
-        train_classes = []
-    val_classes = []
-    test_classes = []
-    return train_classes, val_classes, test_classes
-
 def _get_clinc150_classes(args):
     '''
         @return list of classes associated with each split
@@ -435,14 +415,14 @@ def _load_json(path, dataset):
             if dataset == "clinc150":
                 item = {
                     'label': item_label,
-                    'text': row['raw'],
-                    'tokens': row['text']
+                    'raw': row['raw'],
+                    'text': row['text']
                 }
             else:
                 item = {
                     'label': item_label,
-                    'text': " ".join(row['text'][:500]),  
-                    'tokens': row['text'][:500] # truncate the text to 500 tokens
+                    'raw': " ".join(row['text'][:500]),  
+                    'text': row['text'][:500] # truncate the text to 500 tokens
                 }
 
             text_len.append(len(row['text']))
@@ -496,7 +476,7 @@ def load_dataset(args):
     elif 'clinc150' in args.dataset:
         train_classes, val_classes, test_classes = _get_clinc150_classes(args)
     elif args.dataset == 'smlmt':
-        train_classes, val_classes, test_classes = _get_smlmt_classes(args)
+        pass
     else:
         raise ValueError(
             'args.dataset should be one of'
@@ -511,7 +491,26 @@ def load_dataset(args):
     tprint('Loading data')
     all_data, data_by_class = _load_json(args.data_path, args.dataset)
 
+    if args.dataset == 'smlmt':
+        train_data_by_class = data_by_class
+        val_data_by_class = {}
+        test_data_by_class = {}
+        args.n_train_class = len(train_data_by_class)
+        args.n_val_class = len(val_data_by_class)
+        args.n_test_class = len(test_data_by_class)
+
+        tprint('#train classes {}, #val classes {}, #test classes {}'.format(
+            args.n_train_class, args.n_val_class, args.n_test_class))
+
+        tprint('#train {}, #val {}, #test {}'.format(
+            len([item for items in train_data_by_class.values() for item in items]), 
+            len([item for items in val_data_by_class.values() for item in items]), 
+            len([item for items in test_data_by_class.values() for item in items])))
+
+        return train_data_by_class, val_data_by_class, test_data_by_class
+
     # Split into meta-train, meta-val, meta-test data
+    smlmt_data = [] # list of examples used to train unsupervised tasks
     if args.dataset == 'clinc150':
         # all the train, val, test data contains all 150 in-scope domains
         # train:val:test = 100:20:30
@@ -520,10 +519,11 @@ def load_dataset(args):
         
         for task_id in train_classes:
             train_data_by_class[task_id] = data_by_class[task_id][:100]
-        
+            smlmt_data.extend(train_data_by_class[task_id])
+            
         for task_id in val_classes:
             val_data_by_class[task_id] = data_by_class[task_id][100:120]
-        
+
         for task_id in test_classes:
             test_data_by_class[task_id] = data_by_class[task_id][120:]
 
@@ -537,22 +537,35 @@ def load_dataset(args):
                         train_data_by_class[task_id] = examples[:args.num_examples_from_class]
                 else:
                     train_data_by_class[task_id] = examples
+                # add all the examples under train_task_id for smlmt 
+                smlmt_data.extend(examples)
             elif task_id in val_classes:
                 if hasattr(args, "num_examples_from_class"):
                     if len(examples) >= args.num_examples_from_class:
                         val_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                        # add left over examples for smlmt
+                        smlmt_data.extend(examples[args.num_examples_from_class:])
                 else:
                     val_data_by_class[task_id] = examples
             elif task_id in test_classes:
                 if hasattr(args, "num_examples_from_class"):
                     if len(examples) >= args.num_examples_from_class:
                         test_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                        # add left over examples for smlmt
+                        smlmt_data.extend(examples[args.num_examples_from_class:])
                 else:
                     test_data_by_class[task_id] = examples
 
     args.n_train_class = len(train_data_by_class)
     args.n_val_class = len(val_data_by_class)
     args.n_test_class = len(test_data_by_class) 
+
+    json_strs = [json.dumps(item)+'\n' for item in smlmt_data]
+    save_path = args.data_path.replace(".json", "") + "_pre_smlmt.json"
+    txtfile = open(save_path, 'w')
+    txtfile.writelines(json_strs)
+    txtfile.close()
+    tprint('saving {} items to smlmt files: {}'.format(len(smlmt_data), save_path))
 
     tprint('#train classes {}, #val classes {}, #test classes {}'.format(
         args.n_train_class, args.n_val_class, args.n_test_class))
@@ -567,8 +580,7 @@ def load_dataset(args):
 if __name__ == "__main__":
     from transformers import BertConfig
     config = BertConfig.from_dict({
-        'dataset': 'clinc150c',
-        'data_path': "data/clinc150.json",
-        "num_examples_from_class": 20
+        'dataset': 'smlmt',
+        'data_path': "data/smlmt_clinc150_pre_smlmt.json"
     })
     train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)
