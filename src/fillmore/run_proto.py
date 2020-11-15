@@ -6,6 +6,7 @@ import os
 from fillmore.protonet import ProtoLoss
 from fillmore.bert_model import BertTextEncoder
 from fillmore.dataset.load_text import TextDataGenerator
+from fillmore.nn import nn_eval
 from transformers import AutoConfig
 from transformers import AutoTokenizer
 import copy
@@ -132,7 +133,10 @@ def run_protonet(config, n_way=20, k_shot=1, n_query=5,
             label_s = labels[:, :k_shot, :].reshape((N, k_shot, -1))
             label_q = labels[:, k_shot:, :].reshape((N, n_query, -1))
             #############################
-            val_ls, val_ac = proto_net_eval(model, x=support, q=query, labels_ph=label_q)
+            if config.nn_eval:
+              pred, ls, ac = nn_eval(model, tokenizer, x=support, q=query, labels_x=label_s, labels_q=label_q)
+            else:
+              val_ls, val_ac = proto_net_eval(model, x=support, q=query, labels_ph=label_q)
             tf.summary.scalar("meta-val-loss", val_ls.numpy(), step=itr)
             tf.summary.scalar("meta-val-acc", val_ac.numpy(), step=itr)
             print('[epoch {}/{}, episode {}/{}] => meta-training loss: {:.5f}, meta-training acc: {:.5f}, meta-val loss: {:.5f}, meta-val acc: {:.5f}'.format(ep+1,
@@ -152,36 +156,36 @@ def run_protonet(config, n_way=20, k_shot=1, n_query=5,
         model.save_weights(model_file)
         ################# end of epochs ######################                
   
-    print('Testing...')
-    checkpoint_dir = logdir + '/' + exp_string
-    if checkpoint_name is not None:
-      model_file = os.path.join(checkpoint_dir, checkpoint_name)
-    else:
-      model_file = tf.train.latest_checkpoint(checkpoint_dir)
-    print("Restoring model weights from ", model_file)
-    model.load_weights(model_file)
+  print('Testing...')
+  checkpoint_dir = logdir + '/' + exp_string
+  if checkpoint_name is not None:
+    model_file = os.path.join(checkpoint_dir, checkpoint_name)
+  else:
+    model_file = tf.train.latest_checkpoint(checkpoint_dir)
+  print("Restoring model weights from ", model_file)
+  model.load_weights(model_file)
 
-    meta_test_accuracies = []
-    for epi in range(n_meta_test_episodes):
-      #############################
-      # sample a batch of test data and partition it into
-      # support and query sets
-      texts_test, labels_test = data_generator.sample_batch(config, 'meta_test', 1)
-      texts = texts_test[0]
-      labels = labels_test[0]
-      N, K = texts.shape
-      support = texts[:, :k_meta_test_shot].reshape([n_meta_test_way, k_meta_test_shot])
-      query = texts[:, k_meta_test_shot:].reshape([n_meta_test_way, n_meta_test_query])
-      label_s = labels[:, :k_meta_test_shot, :].reshape([n_meta_test_way, k_meta_test_shot, -1])
-      label_q = labels[:, k_meta_test_shot:, :].reshape([n_meta_test_way, n_meta_test_query, -1])
-      #############################
-      ls, ac = proto_net_eval(model, x=support, q=query, labels_ph=label_q)
-      meta_test_accuracies.append(ac)
-      if (epi+1) % 5 == 0:
-        print('[meta-test episode {}/{}] => loss: {:.5f}, acc: {:.5f}'.format(epi+1, n_meta_test_episodes, ls, ac))
-    avg_acc = np.mean(meta_test_accuracies)
-    stds = np.std(meta_test_accuracies)
-    print('Average Meta-Test Accuracy: {:.5f}, Meta-Test Accuracy Std: {:.5f}'.format(avg_acc, stds))
+  meta_test_accuracies = []
+  for epi in range(n_meta_test_episodes):
+    #############################
+    # sample a batch of test data and partition it into
+    # support and query sets
+    texts_test, labels_test = data_generator.sample_batch(config, 'meta_test', 1)
+    texts = texts_test[0]
+    labels = labels_test[0]
+    N, K = texts.shape
+    support = texts[:, :k_meta_test_shot].reshape([n_meta_test_way, k_meta_test_shot])
+    query = texts[:, k_meta_test_shot:].reshape([n_meta_test_way, n_meta_test_query])
+    label_s = labels[:, :k_meta_test_shot, :].reshape([n_meta_test_way, k_meta_test_shot, -1])
+    label_q = labels[:, k_meta_test_shot:, :].reshape([n_meta_test_way, n_meta_test_query, -1])
+    #############################
+    ls, ac = proto_net_eval(model, x=support, q=query, labels_ph=label_q)
+    meta_test_accuracies.append(ac)
+    if (epi+1) % 5 == 0:
+      print('[meta-test episode {}/{}] => loss: {:.5f}, acc: {:.5f}'.format(epi+1, n_meta_test_episodes, ls, ac))
+  avg_acc = np.mean(meta_test_accuracies)
+  stds = np.std(meta_test_accuracies)
+  print('Average Meta-Test Accuracy: {:.5f}, Meta-Test Accuracy Std: {:.5f}'.format(avg_acc, stds))
 
 
 if __name__ == "__main__":
@@ -206,11 +210,12 @@ if __name__ == "__main__":
   config.n_epochs = 3
   config.n_meta_test_episodes = 2
   config.lr_scheduler = True
+  config.nn_eval = True
   logdir = "./logs/proto"
 
   run_protonet(config, n_way=config.n_way, k_shot=config.k_shot, n_query=config.n_query, 
             n_meta_test_way=config.n_meta_test_way, k_meta_test_shot=config.k_meta_test_shot, n_meta_test_query=config.n_meta_test_query,
-            logdir=logdir, meta_train=True, 
+            logdir=logdir, meta_train=False, 
             n_epochs=config.n_epochs, n_episodes=config.n_episodes, n_meta_test_episodes=config.n_meta_test_episodes, 
             checkpoint_name=None, lr_scheduler=config.lr_scheduler, 
             smlmt=True, smlmt_ratio=0.5, smlmt_data_path="data/smlmt_clinc150small.json")
