@@ -42,9 +42,9 @@ def nn_eval(model, tokenizer, x, q, labels_x, labels_q):
     _, indices = tf.nn.top_k(-distance, k=1)
     indices = tf.squeeze(indices, axis=1)
 
-    labels_x_onehot = tf.reshape(labels_x, [-1, N])
+    labels_x_onehot = tf.reshape(labels_x, [-1, num_classes])
     labels_x = tf.argmax(labels_x_onehot, axis=1)
-    labels_q_onehot = tf.reshape(labels_q, [-1, N])
+    labels_q_onehot = tf.reshape(labels_q, [-1, num_classes])
     labels_q = tf.argmax(labels_q_onehot, axis=1)
 
     labels_pred = tf.gather(tf.constant(labels_x), indices)

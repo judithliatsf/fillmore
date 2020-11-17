@@ -532,27 +532,27 @@ def load_dataset(args):
 
         for task_id, examples in data_by_class.items():
             if task_id in train_classes:
-                if hasattr(args, 'num_examples_from_class'):
-                    if len(examples) >= args.num_examples_from_class:
-                        train_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                if hasattr(args, 'num_examples_from_class_train'):
+                    if len(examples) >= args.num_examples_from_class_train:
+                        train_data_by_class[task_id] = examples[:args.num_examples_from_class_train]
                 else:
                     train_data_by_class[task_id] = examples
                 # add all the examples under train_task_id for smlmt 
                 smlmt_data.extend(examples)
             elif task_id in val_classes:
-                if hasattr(args, "num_examples_from_class"):
-                    if len(examples) >= args.num_examples_from_class:
-                        val_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                if hasattr(args, "num_examples_from_class_valid"):
+                    if len(examples) >= args.num_examples_from_class_valid:
+                        val_data_by_class[task_id] = examples[:args.num_examples_from_class_valid]
                         # add left over examples for smlmt
-                        smlmt_data.extend(examples[args.num_examples_from_class:])
+                        smlmt_data.extend(examples[args.num_examples_from_class_valid:])
                 else:
                     val_data_by_class[task_id] = examples
             elif task_id in test_classes:
-                if hasattr(args, "num_examples_from_class"):
-                    if len(examples) >= args.num_examples_from_class:
-                        test_data_by_class[task_id] = examples[:args.num_examples_from_class]
+                if hasattr(args, "num_examples_from_class_test"):
+                    if len(examples) >= args.num_examples_from_class_test:
+                        test_data_by_class[task_id] = examples[:args.num_examples_from_class_test]
                         # add left over examples for smlmt
-                        smlmt_data.extend(examples[args.num_examples_from_class:])
+                        smlmt_data.extend(examples[args.num_examples_from_class_test:])
                 else:
                     test_data_by_class[task_id] = examples
 
@@ -586,6 +586,8 @@ if __name__ == "__main__":
     config = BertConfig.from_dict({
         'dataset': 'clinc150c',
         'data_path': "data/clinc150.json",
-        'num_examples_from_class': 20
+        'num_examples_from_class_train': 20,
+        'num_examples_from_class_valid': 50,
+        'num_examples_from_class_test': 50,
     })
     train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)
