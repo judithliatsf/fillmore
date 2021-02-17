@@ -36,15 +36,24 @@ def get_clinc150_dataset():
     unzip_file("../clinc150_uci.zip", "..")
     os.remove("../clinc150_uci.zip")
 
+    # convert raw data into standard format
+    format(input_file="../clinc150_uci/data_full.json", output_file="data/clinc150.json")
+    format(input_file="../clinc150_uci/data_oos_plus.json", output_file="data/clinc150_oos.json")
+    
+    # clean up
+    shutil.rmtree("../clinc150_uci")
+    shutil.rmtree("../__MACOSX")
+
+def format(input_file='data/data_oos_plus.json', output_file="data/clinc150_oos.json"):
     # reformat into distsig_dataset data folder with BERT tokenizer
-    with open('../clinc150_uci/data_full.json') as f:
+    with open(input_file) as f:
         data = json.load(f)
 
-    train_dat = pd.DataFrame(data["train"])
+    train_dat = pd.DataFrame(data["oos_train"])
     train_dat = train_dat.rename(columns={0:"sample", 1:"label"})
-    val_dat = pd.DataFrame(data["val"])
+    val_dat = pd.DataFrame(data["oos_val"])
     val_dat = val_dat.rename(columns={0:"sample", 1:"label"})
-    test_dat = pd.DataFrame(data["test"])
+    test_dat = pd.DataFrame(data["oos_test"])
     test_dat = test_dat.rename(columns={0:"sample", 1:"label"})
 
     label_map = {}
@@ -75,11 +84,9 @@ def get_clinc150_dataset():
         json_str = json.dumps(json_dict)
         json_strs.append(json_str+'\n')
         
-    txtfile = open("../data/clinc150.json", 'w')
+    txtfile = open(output_file, 'w')
     txtfile.writelines(json_strs)
     txtfile.close()
-    shutil.rmtree("../clinc150_uci")
-    shutil.rmtree("../__MACOSX")
 
 def main():
     get_distsig_dataset()
