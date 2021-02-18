@@ -37,7 +37,7 @@ class ProtoNet(tf.keras.Model):
         return out
 
 
-def ProtoLoss(x_latent, q_latent, labels_onehot, num_classes, num_support, num_queries):
+def ProtoLoss(x_latent, q_latent, labels_onehot, num_classes, num_support, num_queries, config):
     """
       calculates the prototype network loss using the latent representation of x
       and the latent representation of the query set
@@ -75,7 +75,7 @@ def ProtoLoss(x_latent, q_latent, labels_onehot, num_classes, num_support, num_q
     labels_onehot = tf.reshape(labels_onehot, [-1, num_classes])
     labels = tf.argmax(labels_onehot, axis=1)
 
-    bce = tf.keras.losses.BinaryCrossentropy()
+    bce = tf.keras.losses.BinaryCrossentropy(label_smoothing=config.label_smoothing)
     ce_loss = bce(labels_onehot, prob)
 
     acc = tf.reduce_mean(

@@ -13,7 +13,7 @@ import copy
 
 tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
 
-def proto_net_train_step(model, optim, x, q, labels_ph):
+def proto_net_train_step(model, optim, x, q, labels_ph, config):
   num_classes, num_support = x.shape
   num_queries = q.shape[1]
   x = x.reshape([num_classes*num_support,]).tolist()
@@ -30,7 +30,7 @@ def proto_net_train_step(model, optim, x, q, labels_ph):
   with tf.GradientTape() as tape:
     x_latent = model(x) # [N*S, D]
     q_latent = model(q) # [N*Q, D]
-    ce_loss, acc = ProtoLoss(x_latent, q_latent, labels_ph, num_classes, num_support, num_queries)
+    ce_loss, acc = ProtoLoss(x_latent, q_latent, labels_ph, num_classes, num_support, num_queries, config)
 
   gradients = tape.gradient(ce_loss, model.trainable_variables)
   optim.apply_gradients(zip(gradients, model.trainable_variables))
