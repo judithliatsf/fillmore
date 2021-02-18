@@ -392,7 +392,11 @@ def _get_reuters_classes(args):
 
 def _load_json(path, dataset):
     '''
-        load data file
+        load data file with the following format
+        ```
+        {"text": ["i", "think"], "raw": "i think", "label":0}
+        {"text": ["therefore", "i", "am"], "raw": "therefore i am", "label":1}
+        ```
         @param path: str, path to the data file
         @return data: list of examples
     '''
@@ -414,9 +418,9 @@ def _load_json(path, dataset):
             
             if "raw" in row.keys():
                 item = {
-                    'label': item_label,
-                    'raw': row['raw'],
-                    'text': row['text']
+                    'label': item_label,    # integer from 0
+                    'raw': row['raw'],      # raw string
+                    'text': row['text']     # tokenized text
                 }
             else:
                 item = {
@@ -575,7 +579,14 @@ def load_dataset(args):
         len([item for items in val_data_by_class.values() for item in items]), 
         len([item for items in test_data_by_class.values() for item in items])))
 
-    return train_data_by_class, val_data_by_class, test_data_by_class
+    if hasattr(args, 'oos') and args.oos == True:
+        tprint('loading oos data from {}'.format(args.oos_data_path))
+        _, data_by_class = _load_json(args.oos_data_path, args.dataset)
+        oos_val_data_by_class = {0: data_by_class[0][:500]} # todo change according to dataset
+        oos_test_data_by_class = {0: data_by_class[0][500:1000]}
+        return train_data_by_class, val_data_by_class, test_data_by_class, oos_val_data_by_class, oos_test_data_by_class
+    else:
+        return train_data_by_class, val_data_by_class, test_data_by_class
 
 if __name__ == "__main__":
     from transformers import BertConfig

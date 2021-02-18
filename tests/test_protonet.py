@@ -49,7 +49,11 @@ labels_onehot = tf.constant([[[1., 0.]], [[1., 0.]]]) # [N, Q, N]
 x_labels_onehot = tf.constant([[[1., 0.], [1., 0.], [1., 0.]], [[0., 1.], [0., 1.], [0., 1.]]])
 x_labels_onehot = tf.reshape(x_labels_onehot, [2*3, 2])
 
-loss, acc = ProtoLoss(x_latent, q_latent, labels_onehot, num_classes, num_support, num_queries)
+# compute loss
+from transformers import AutoConfig
+config = AutoConfig.from_pretrained("bert-base-uncased")
+config.label_smoothing = 0.1
+loss, acc = ProtoLoss(x_latent, q_latent, labels_onehot, num_classes, num_support, num_queries, config)
 print("loss: {}".format(loss))
 print("acc: {}".format(acc))
 

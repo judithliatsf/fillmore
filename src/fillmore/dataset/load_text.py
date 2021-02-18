@@ -26,7 +26,12 @@ class TextDataGenerator(object):
 
         # load data organized by class
         random.seed(seed)
-        train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)
+        if hasattr(config, 'oos') and config.oos == True:
+            train_data_by_class, val_data_by_class, test_data_by_class, oos_val_data_by_class, oos_test_data_by_class = load_dataset(config)
+            self.oos_val_data_by_class = oos_val_data_by_class
+            self.oos_test_data_by_class = oos_test_data_by_class
+        else:
+            train_data_by_class, val_data_by_class, test_data_by_class = load_dataset(config)
         self.train_data_by_class = train_data_by_class
         self.val_data_by_class = val_data_by_class
         self.test_data_by_class = test_data_by_class
@@ -54,22 +59,33 @@ class TextDataGenerator(object):
             data_by_class = self.val_data_by_class
             num_classes = self.num_classes
             num_samples_per_class = self.num_samples_per_class
-        else:
+        elif batch_type == "meta_test":
             folders = self.test_data_by_class.keys()
             data_by_class = self.test_data_by_class
             num_classes = self.num_meta_test_classes
             num_samples_per_class = self.num_meta_test_samples_per_class
-        
+        elif batch_type == "oos_test":
+            folders = [0]
+            num_classes = 1
+            num_samples_per_class = self.num_meta_test_samples_per_class
+            data_by_class = self.oos_test_data_by_class
+        elif batch_type == "oos_val":
+            folders = [0]
+            num_classes = 1
+            num_samples_per_class = self.num_samples_per_class
+            data_by_class = self.oos_val_data_by_class
+
         all_text_batches, all_label_batches = [], []
 
         for i in range(batch_size):
             sampled_classes = random.sample(folders, num_classes)
             texts, labels = [], []
-            for i, c in enumerate(sampled_classes):
-                all_items = random.sample(data_by_class[c], num_samples_per_class)
+            for i, cc in enumerate(sampled_classes):
+                all_items = random.sample(data_by_class[cc], num_samples_per_class)
                 for item in all_items:
                     texts.append(item['raw'])
                     labels.append(i)
+            
             if self.encoder is not None:
                 texts = self.encoder(texts) # tf.Tensor of size [N, emb_size]
                 texts = np.reshape(texts.numpy(), (num_classes, num_samples_per_class, self.emb_size))

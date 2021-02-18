@@ -1,5 +1,6 @@
 import unittest
 from fillmore.load_data import DataGenerator
+from transformers import AutoConfig
 
 class DataGeneratorTest(unittest.TestCase):
     @classmethod
@@ -8,6 +9,7 @@ class DataGeneratorTest(unittest.TestCase):
         cls.k_shot = 2
         cls.data_path = './omniglot_resized'
         cls.meta_batch_size = 5
+        cls.config = AutoConfig.from_pretrained("bert-base-uncased")
 
     def test_load_data(self):
         data_generator = DataGenerator(self.n_way, self.k_shot*2, self.n_way, self.k_shot*2, config={'data_folder': self.data_path})
