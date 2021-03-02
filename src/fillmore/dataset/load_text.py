@@ -23,10 +23,14 @@ class TextDataGenerator(object):
         self.encoder = encoder
         self.dim_input = 1 # "string"
         self.dim_output = self.num_classes
-
+        if hasattr(config, 'oos') and config.oos == True:
+            self.oos = True
+        else:
+            self.oos = False
+        
         # load data organized by class
         random.seed(seed)
-        if hasattr(config, 'oos') and config.oos == True:
+        if self.oos:
             train_data_by_class, val_data_by_class, test_data_by_class, oos_val_data_by_class, oos_test_data_by_class = load_dataset(config)
             self.oos_val_data_by_class = oos_val_data_by_class
             self.oos_test_data_by_class = oos_test_data_by_class
@@ -65,13 +69,15 @@ class TextDataGenerator(object):
             num_classes = self.num_meta_test_classes
             num_samples_per_class = self.num_meta_test_samples_per_class
         elif batch_type == "oos_test":
-            folders = [0]
+            folders = self.oos_test_data_by_class.keys()
             num_classes = 1
+            oos_label = self.num_meta_test_classes
             num_samples_per_class = self.num_meta_test_samples_per_class
             data_by_class = self.oos_test_data_by_class
         elif batch_type == "oos_val":
-            folders = [0]
+            folders = self.oos_val_data_by_class.keys()
             num_classes = 1
+            oos_label = self.num_classes
             num_samples_per_class = self.num_samples_per_class
             data_by_class = self.oos_val_data_by_class
 
@@ -84,18 +90,23 @@ class TextDataGenerator(object):
                 all_items = random.sample(data_by_class[cc], num_samples_per_class)
                 for item in all_items:
                     texts.append(item['raw'])
-                    labels.append(i)
-            
+                    if batch_type in ("oos_val", "oos_test"):
+                        labels.append(oos_label)
+                    else:
+                        labels.append(i)
+            print(labels)
             if self.encoder is not None:
                 texts = self.encoder(texts) # tf.Tensor of size [N, emb_size]
                 texts = np.reshape(texts.numpy(), (num_classes, num_samples_per_class, self.emb_size))
             else:
                 texts = np.array(texts).astype(np.str)
                 texts = np.reshape(texts, (num_classes, num_samples_per_class)) # N, K, 1
+            
+            # transform label into onehot format
             labels = np.array(labels).astype(np.int32)
             labels = np.reshape(labels, (num_classes, num_samples_per_class))
             labels = np.eye(num_classes, dtype=np.float32)[labels] # N, K, N
-
+            print(labels)
             all_text_batches.append(texts)
             all_label_batches.append(labels)
 
