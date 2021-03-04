@@ -61,7 +61,10 @@ class BertTextEncoderWrapper(TFBertPreTrainedModel):
         self.max_seq_len = config.max_seq_len
         self.encoder = BertTextEncoder(config)
         self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-
+        self.dummy_text_inputs = [
+            "cats are in the cloud",
+            "dogs are on the ground"
+        ]
     def call(self, inputs):
         features = self.tokenizer.batch_encode_plus(
                     batch_text_or_text_pairs=inputs, 
