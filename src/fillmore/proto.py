@@ -1,8 +1,28 @@
-
-
-from tensorflow.python.eager.monitoring import Metric
 import numpy as np
+from numpy.lib.function_base import gradient
+import tensorflow as tf
 
+def proto_net_train_step(model, opt, episode, config):
+    """Update model by backpropagating training loss per episode
+
+    Args:
+        model (Learner): Learner for forward pass and compute loss
+        opt (tf.keras.Optimizer): Optimizer, e.g., Adam
+        episode ([type]): An episode contains support and query sets
+        config ([type]): A config access by `config.attribute`
+
+    Returns:
+        [type]: [description]
+    """
+    with tf.GradientTape() as tape:
+        query_logits = model(episode)
+        query_labels_onehot = episode["query_labels_onehot"]
+        loss = model.compute_loss(query_logits, query_labels_onehot)
+
+    gradients = tape.gradient(loss, model.trainable_variables)
+    opt.apply_gradients(zip(gradients, model.trainable_variables))
+    return loss, gradients
+    
 def proto_net_eval(model, data_loaders, num_episodes, split, config):
     """Compute accuracy and other statistis averaged over a batch of episodes
 
@@ -114,10 +134,26 @@ if __name__ == "__main__":
     config.max_seq_len = 32
     embedding_func = BertTextEncoderWrapper(config)
     model = MetricLearner(embedding_func)
-
+    
+    # train
+    config.learning_rate = 1e-5
+    config.epsilon = 1e-8
+    config.clipnorm = 1.0
+    train_episodes = data_loaders["meta_train"].sample_episodes(batch_size)
+    optimizer = tf.keras.optimizers.Adam(
+        learning_rate=config.learning_rate,
+        epsilon=config.epsilon,
+        clipnorm=config.clipnorm
+    )
+    for episode in train_episodes:
+        loss, grad = proto_net_train_step(model, optimizer, episode, config)    
+        episode_stats = proto_net_eval_step(model, episode, config)
+        print("loss: {}".format(loss))
+        print("acc: {}".format(episode_stats["acc"]))
+    
     # load episodes for evaluation
-    stats = proto_net_eval(model, data_loaders, batch_size, SPLIT, config)
-    print(stats)
+    # stats = proto_net_eval(model, data_loaders, batch_size, SPLIT, config)
+    # print(stats)
     # for episode in episodes:
     #     episode_stats = proto_net_eval_step(model, episode, config)
     #     print(episode_stats["acc"])
