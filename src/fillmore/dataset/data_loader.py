@@ -74,6 +74,7 @@ if __name__ == "__main__":
         "num_examples_from_class_train": 20,
         "num_examples_from_class_valid": 50,
         "num_examples_from_class_test": 50,
+        "smlmt": False,
         "oos": True,
         "oos_data_path": "data/clinc150_oos.json", 
         "n_way": 5,
@@ -84,34 +85,31 @@ if __name__ == "__main__":
         "n_meta_test_query": 10
     })
 
-    if config.oos:
-        train_data_by_class, val_data_by_class, test_data_by_class, oos_val_data_by_class, oos_test_data_by_class=load_dataset(config)
-    else:
-        train_data_by_class, val_data_by_class, test_data_by_class=load_dataset(config)
+    data = load_dataset(config)
     
     # create DataLoader for SPLIT
     data_loaders={"meta_train": TextDataLoader(
-            train_data_by_class, 
+            data["meta_train"], 
             config.k_shot, config.n_query, config.n_way,
             seed=1234, task=config.dataset
         ),
         "meta_val": TextDataLoader(
-            train_data_by_class, 
+            data['meta_val'], 
             config.k_shot, config.n_query, config.n_way,
             seed=1234, task=config.dataset
         ),
         "meta_test": TextDataLoader(
-            train_data_by_class, 
+            data['meta_test'], 
             config.k_meta_test_shot, config.n_meta_test_query, config.n_meta_test_way,
             seed=1234, task=config.dataset
         ),
         "oos_val": TextDataLoader(
-            oos_val_data_by_class,
+            data['oos_val'],
             config.k_shot, config.n_query, 1,
             seed=1234, task=config.dataset
         ),
         "oos_test": TextDataLoader(
-            oos_test_data_by_class,
+            data['oos_test'],
             config.k_meta_test_shot, config.n_meta_test_query, 1,
             seed=1234, task=config.dataset
         )

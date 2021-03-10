@@ -4,14 +4,14 @@ Run this script to get SMLMT dataset for dataset in data folder
 
 import json
 import os
-import glob
 import pandas as pd
 from collections import defaultdict
+from fillmore.dataset.utils import tprint
+
 from spacy.tokenizer import Tokenizer
 from spacy.lang.en import English
 nlp = English()
 tokenizer = Tokenizer(nlp.vocab)
-# from transformers import AutoTokenizer
 
 def get_smlmt(examples):
 
@@ -66,46 +66,39 @@ def get_smlmt(examples):
             no_label_map[w] = len(items)
     return data_by_class, json_strs, label_map, no_label_map
 
-def build_smlmt(folder, filename):
-    # os.chdir("../data")
-    # data_files = glob.glob("*.json")
-    # for f in data_files:
-    #     get_smlmt("../data", f)
-
-    data_path = os.path.join(folder, filename)
-    examples = []
-    with open(data_path, 'r', errors='ignore') as f:
-        for line in f:
-            row = json.loads(line)
-            examples.append(row)
+def build_smlmt(examples, config):
+    """Create smlmt tasks from unlabeled examples
+    """
     
+    folder = os.path.dirname(config.data_path)
+    task_name = config.dataset
+
+    # save smlmt examples for target task
+    json_strs = [json.dumps(item)+'\n' for item in examples]
+    smlmt_data_path = os.path.join(folder, task_name + "_pre_smlmt.json")
+    txtfile = open(smlmt_data_path, 'w')
+    txtfile.writelines(json_strs)
+    txtfile.close()
+    tprint('saving {} unlabeled examples to file: {}'.format(len(examples), smlmt_data_path))
+
+    # create smlmt tasks from unlabeled examples
     data_by_class, json_strs, label_map, no_label_map = get_smlmt(examples)
 
-    print("writing "+"smlmt_"+filename)
-    txtfile = open(os.path.join(folder, "smlmt_"+filename), 'w')
+    tprint("writing smlmt tasks to "+"smlmt_" + task_name + ".json")
+    txtfile = open(os.path.join(folder, "smlmt_" + task_name + ".json"), 'w')
     txtfile.writelines(json_strs)
     txtfile.close()
     
+    tprint("writing words included in smlmt tasks to "+"smlmt_label_" + task_name + ".json")
     label_str = json.dumps(label_map)
-    labelfile = open(os.path.join(folder, "smlmt_label_"+filename), 'w')
+    labelfile = open(os.path.join(folder, "smlmt_label_" + task_name + ".json"), 'w')
     labelfile.writelines(label_str)
     labelfile.close()
 
+    tprint("writing words not included in smlmt tasks to "+"smlmt_no_label_" + task_name + ".json")
     no_label_str = json.dumps(no_label_map)
-    labelfile = open(os.path.join(folder, "smlmt_no_label_"+filename), 'w')
+    labelfile = open(os.path.join(folder, "smlmt_no_label_" + task_name + ".json"), 'w')
     labelfile.writelines(no_label_str)
     labelfile.close()
+    return data_by_class
 
-
-if __name__ == "__main__":
-    # how to use build_smlmt operates on "*_pre_smlmt.json"
-    build_smlmt("data1", "clinc150_pre_smlmt.json")
-
-    # # how to use get_smlmt
-    # data_path = "data/clinc150small.json"
-    # examples = []
-    # with open(data_path, 'r', errors='ignore') as f:
-    #     for line in f:
-    #         row = json.loads(line)
-    #         examples.append(row)
-    # data_by_class, json_strs, label_map, no_label_map = get_smlmt(examples)
