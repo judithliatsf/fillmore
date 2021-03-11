@@ -1,10 +1,54 @@
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.training.tracking.util import Checkpoint
 from fillmore.dataset.loader import load_dataset
 from fillmore.dataset.data_loader import TextDataLoader
+from tqdm import tqdm
 
-def proto_net_train():
-    pass
+def proto_net_train(config, model, optimizer, retrain):
+
+    # train
+    if retrain:
+        model.load_weights(config.checkpoint_path)
+        print("Load model weights from checkpoints ", config.checkpoint_path)
+    
+    for ep in range(config.n_epochs):
+
+        for epi in tqdm(range(config.n_meta_train_episodes), total=(config.n_epochs*config.n_meta_train_episodes)):
+            
+            # set learning rate
+            if (epi + 1) % 50 == 0:
+                optimizer.learning_rate = optimizer.learning_rate/2
+                print("learning rate for iteration {}: {}".format(optimizer.iterations, optimizer.learning_rate))
+            
+            if not config.smlmt:
+                episode = data_loaders["meta_train"].sample_episodes(1)[0]
+            else:
+                lucky_number = np.random.random_sample()
+                if lucky_number < config.smlmt_ratio:
+                    episode = data_loaders["smlmt_train"].sample_episodes(1)[0]
+                else:
+                    episode = data_loaders["meta_train"].sample_episodes(1)[0]
+            
+            loss, grad = proto_net_train_step(model, optimizer, episode, config)    
+            
+            
+            # training loss and acc
+            if (epi+1) % 10 == 0:
+                episode_stats = proto_net_eval_step(model, episode, config)
+                print("training loss: {}".format(loss))
+                print("training acc: {}".format(episode_stats["acc"]))
+        
+        # meta validation
+        stats = proto_net_eval(model, data_loaders["meta_val"], config.n_meta_val_episodes, config)
+        print("val acc: {}".format(stats["acc"]))
+        print("val loss: {}".format(stats["loss"]))
+        
+        # save model at the end of every epoch
+        checkpoint_name = "model" + str(ep)
+        model_file = config.experiment_dir + "/" + config.run_dir + '/' + checkpoint_name
+        print("saving checkpoints at iteration {} to {}".format(optimizer.iterations.numpy(), model_file))
+        model.save_weights(model_file)
 
 def proto_net_train_step(model, opt, episode, config):
     """Update model by backpropagating training loss per episode
@@ -27,12 +71,12 @@ def proto_net_train_step(model, opt, episode, config):
     opt.apply_gradients(zip(gradients, model.trainable_variables))
     return loss, gradients
     
-def proto_net_eval(model, data_loaders, num_episodes, split, config):
+def proto_net_eval(model, data_loader, num_episodes, config):
     """Compute accuracy and other statistis averaged over a batch of episodes
 
     Args:
         model (Learner): A few-shot learner
-        data_loaders (dict): A dictionary of data_loader for each split
+        data_loaders (TextDataLoader): A episode loader
         num_episodes (int): number of episodes used for evaluation 
         split (string): e.g., "meta_val"
         config (dict): A config access by `config.attribute`
@@ -40,18 +84,18 @@ def proto_net_eval(model, data_loaders, num_episodes, split, config):
     Returns:
         batch_stats: statistics average over a batch of episodes
     """
-    data_loader = data_loaders[split]
-
     meta_eval_accuracies = []
+    losses = []
 
     for episode in data_loader.sample_episodes(num_episodes):
         episode_stats = proto_net_eval_step(model, episode, config)
         meta_eval_accuracies.append(episode_stats["acc"])
+        losses.append(episode_stats["loss"])
     
     avg_acc = np.mean(meta_eval_accuracies)
     stds = np.std(meta_eval_accuracies)
-
-    return {"acc": avg_acc, "stds": stds}
+    loss = np.mean(losses)
+    return {"acc": avg_acc, "stds": stds, "loss": loss}
 
 def proto_net_eval_step(model, episode, config):
     """Compute query accuracy for an episode given a few-shot learner
@@ -67,8 +111,10 @@ def proto_net_eval_step(model, episode, config):
     query_logits= model(episode)
     query_labels_onehot = episode['query_labels_onehot']
     acc = model.compute_accuracy(query_labels_onehot, query_logits)
+    loss = model.compute_loss(query_logits, query_labels_onehot)
     episode_stats = {
-        "acc": acc
+        "acc": acc,
+        "loss": loss
     }
     return episode_stats
 
@@ -119,8 +165,14 @@ def create_data_loaders(config):
 
 if __name__ == "__main__":
     from transformers import BertConfig
-    
+    import os
+    meta_train = True
+    meta_test = True
+    retrain = True
+    checkpoint_name = None
+
     config=BertConfig.from_dict({
+        "experiment_dir": "logs/proto1",
         "dataset": "clinc150c",
         "data_path": "data/clinc150.json",
         "num_examples_from_class_train": 20,
@@ -140,14 +192,27 @@ if __name__ == "__main__":
         "smlmt_n_query": 10,
         "seed": 1234
     })
+    
+    # train config
+    config.learning_rate = 1e-5
+    config.epsilon = 1e-8
+    config.clipnorm = 1.0
+    config.n_meta_train_episodes = 1 # number of training episodes per epoch
+    config.n_meta_val_episodes = 2 # number of validation episodes
+    config.n_meta_test_episodes = 3
+    config.n_epochs = 1 # number of training epochs
+    
+    # checkpoints 
+    config.run_dir = 'cls_'+str(config.n_way)+'.eps_'+str(config.n_meta_train_episodes) + \
+        '.k_shot_' + str(config.k_shot) + '.n_query_' + str(config.n_query)
+    checkpoint_dir = config.experiment_dir + '/' + config.run_dir
+    if checkpoint_name is not None:
+        config.checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
+    else:
+        config.checkpoint_path = tf.train.latest_checkpoint(checkpoint_dir)
 
     # create DataLoader for SPLIT
     data_loaders = create_data_loaders(config)
-
-    # # load episode
-    # SPLIT="meta_val"
-    # batch_size = 2
-    # episodes = data_loaders[SPLIT].sample_episodes(batch_size)
 
     # load model
     from fillmore.metric_learners import MetricLearner
@@ -155,38 +220,21 @@ if __name__ == "__main__":
     config.label_smoothing = 0.0
     config.max_seq_len = 32
     embedding_func = BertTextEncoderWrapper(config)
-    model = MetricLearner(embedding_func)
-    
-    # train
-    config.learning_rate = 1e-5
-    config.epsilon = 1e-8
-    config.clipnorm = 1.0
-    config.n_episodes = 1 # number of training episodes per epoch
-    config.n_val_episodes = 2 # number of validation episodes
-    config.n_epochs = 1 # number of training epochs
-
-    exp_string = 'cls_'+str(config.n_way)+'.eps_'+str(config.n_episodes) + \
-        '.k_shot_' + str(config.k_shot) + '.n_query_' + str(config.n_query)
-    
+    model = MetricLearner(embedding_func)       
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=config.learning_rate,
         epsilon=config.epsilon,
         clipnorm=config.clipnorm
     )
-    for ep in range(config.n_epochs):
-        for epi in range(config.n_episodes):
-            episode = data_loaders["meta_train"].sample_episodes(1)[0]
-            loss, grad = proto_net_train_step(model, optimizer, episode, config)    
-            episode_stats = proto_net_eval_step(model, episode, config)
-            print("loss: {}".format(loss))
-            print("acc: {}".format(episode_stats["acc"]))
 
-            episode = data_loaders["smlmt_train"].sample_episodes(1)[0]
-            loss, grad = proto_net_train_step(model, optimizer, episode, config)    
-            episode_stats = proto_net_eval_step(model, episode, config)
-            print("loss: {}".format(loss))
-            print("acc: {}".format(episode_stats["acc"]))
-            
-            # load episodes for evaluation
-            stats = proto_net_eval(model, data_loaders, config.n_val_episodes, "meta_val", config)
-            print("val acc: {}".format(stats["acc"]))
+    # meta train
+    if meta_train:
+        proto_net_train(config, model, optimizer, retrain)
+
+    # meta test
+    if meta_test:
+        model.load_weights(config.checkpoint_path)
+        print("Load model weights from checkpoints {} for meta testing".format(config.checkpoint_path))
+        stats = proto_net_eval(model, data_loaders["meta_test"], config.n_meta_test_episodes, config)
+        print("test acc: {}".format(stats["acc"]))
+        print("test loss: {}".format(stats["loss"]))
