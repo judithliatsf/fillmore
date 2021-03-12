@@ -12,9 +12,9 @@ def proto_net_train(config, model, optimizer, retrain):
         model.load_weights(config.checkpoint_path)
         print("Load model weights from checkpoints ", config.checkpoint_path)
     
-    for ep in range(config.n_epochs):
+    for ep in tqdm(range(config.n_epochs)):
 
-        for epi in tqdm(range(config.n_meta_train_episodes), total=(config.n_epochs*config.n_meta_train_episodes)):
+        for epi in range(config.n_meta_train_episodes):
             
             # set learning rate
             if (epi + 1) % 50 == 0:
@@ -36,7 +36,7 @@ def proto_net_train(config, model, optimizer, retrain):
             # training loss and acc
             if (epi+1) % 10 == 0:
                 episode_stats = proto_net_eval_step(model, episode, config)
-                print("training loss: {}".format(loss))
+                print("training loss: {}".format(episode_stats["loss"]))
                 print("training acc: {}".format(episode_stats["acc"]))
         
         # meta validation
@@ -87,7 +87,7 @@ def proto_net_eval(model, data_loader, num_episodes, config):
     meta_eval_accuracies = []
     losses = []
 
-    for episode in data_loader.sample_episodes(num_episodes):
+    for episode in tqdm(data_loader.sample_episodes(num_episodes)):
         episode_stats = proto_net_eval_step(model, episode, config)
         meta_eval_accuracies.append(episode_stats["acc"])
         losses.append(episode_stats["loss"])
@@ -113,8 +113,8 @@ def proto_net_eval_step(model, episode, config):
     acc = model.compute_accuracy(query_labels_onehot, query_logits)
     loss = model.compute_loss(query_logits, query_labels_onehot)
     episode_stats = {
-        "acc": acc,
-        "loss": loss
+        "acc": acc.numpy(),
+        "loss": loss.numpy()
     }
     return episode_stats
 
@@ -168,7 +168,7 @@ if __name__ == "__main__":
     import os
     meta_train = True
     meta_test = True
-    retrain = True
+    retrain = False
     checkpoint_name = None
 
     config=BertConfig.from_dict({
