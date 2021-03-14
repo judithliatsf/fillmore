@@ -8,9 +8,10 @@ class MetricLearner(tf.keras.Model):
         super(MetricLearner, self).__init__(**kwargs)
         self.embedding_func = embedding_func
     
-    def call(self, episode):
+    def call(self, episode, query_examples=[]):
         support_examples = episode["support_examples"]
-        query_examples = episode["query_examples"]
+        if not query_examples:
+            query_examples = episode["query_examples"]
         support_labels_onehot = episode["support_labels_onehot"]
         support_embeddings = self.embedding_func(support_examples)
         query_embeddings = self.embedding_func(query_examples)
@@ -28,7 +29,7 @@ class MetricLearner(tf.keras.Model):
             cost [float]: cross entropy loss averaged over all query examples
         """
         cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits(
-        query_labels_onehot, query_logits)
+        tf.stop_gradient(query_labels_onehot), query_logits)
 
         cost = tf.reduce_mean(cross_entropy_loss)
         return cost

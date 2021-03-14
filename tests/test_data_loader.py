@@ -15,15 +15,16 @@ class TextDataGeneratorTest(unittest.TestCase):
         config.num_labels = 3
         config.vocab_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures/vocab.txt")
         config.max_seq_len = 7
+        config.smlmt = False
         cls.config = config
 
     def test_load_data(self):
         config = deepcopy(self.config)
         config.dataset = "reuters"
         config.data_path = "data/reuters.json"
-        train_data_by_class, val_data_by_class, test_data_by_class=load_dataset(config)
+        data=load_dataset(config)
         data_generator = TextDataLoader(
-            data_by_class=train_data_by_class, 
+            data_by_class=data["meta_train"], 
             k_shot=self.k_shot, 
             n_query=self.k_shot,
             n_way = self.n_way, seed=1234, task=config.dataset)
@@ -41,9 +42,9 @@ class TextDataGeneratorTest(unittest.TestCase):
         config.dataset = "clinc150"
         config.domains = ['banking']
         config.data_path = "data/clinc150.json"
-        train_data_by_class, val_data_by_class, test_data_by_class=load_dataset(config)
+        data=load_dataset(config)
         data_generator = TextDataLoader(
-            data_by_class=train_data_by_class, 
+            data_by_class=data["meta_train"], 
             k_shot=self.k_shot, 
             n_query=self.k_shot,
             n_way = self.n_way, seed=1234, task=config.dataset)
@@ -62,9 +63,9 @@ class TextDataGeneratorTest(unittest.TestCase):
         config.data_path = "data/clinc150.json"
         config.domains = []
         config.num_examples_from_class = 20
-        train_data_by_class, val_data_by_class, test_data_by_class=load_dataset(config)
+        data=load_dataset(config)
         data_generator = TextDataLoader(
-            data_by_class=train_data_by_class, 
+            data_by_class=data["meta_train"], 
             k_shot=self.k_shot, 
             n_query=self.k_shot,
             n_way = self.n_way, seed=1234, task=config.dataset)
@@ -79,13 +80,16 @@ class TextDataGeneratorTest(unittest.TestCase):
 
     def test_load_smlmt(self):
         config = deepcopy(self.config)
-        config.dataset = "smlmt"
-        config.data_path = "data/smlmt_clinc150small.json"
+        config.dataset = "clinc150c"
+        config.data_path = "data/clinc150.json"
+        config.smlmt = True
         config.domains = []
-        config.num_examples_from_class = 20
-        train_data_by_class, val_data_by_class, test_data_by_class=load_dataset(config)
+        config.num_examples_from_class_train = 50
+        config.num_examples_from_class_valid = 50
+        config.num_examples_from_class_test = 50
+        data=load_dataset(config)
         data_generator = TextDataLoader(
-            data_by_class=train_data_by_class, 
+            data_by_class=data["meta_train"], 
             k_shot=self.k_shot, 
             n_query=self.k_shot,
             n_way = self.n_way, seed=1234, task=config.dataset)
@@ -94,9 +98,9 @@ class TextDataGeneratorTest(unittest.TestCase):
         self.assertEqual(len(episodes[0]["support_examples"]), 3*2)
         self.assertEqual(len(episodes[0]["support_labels"]), 3*2)
         self.assertEqual(episodes[0]["support_labels_onehot"].shape, [3*2, 3])
-        self.assertEqual(config.n_train_class, 325)
-        self.assertEqual(config.n_val_class, 0)
-        self.assertEqual(config.n_test_class, 0)
+        self.assertEqual(config.n_smlmt_train_class, 223)
+        self.assertEqual(config.n_smlmt_val_class, 0)
+        self.assertEqual(config.n_smlmt_test_class, 0)
     
     def test_load_oos(self):
         config = deepcopy(self.config)
@@ -105,14 +109,18 @@ class TextDataGeneratorTest(unittest.TestCase):
         config.data_path = "data/clinc150.json"
         config.oos = True
         config.oos_data_path = "data/clinc150_oos.json"
-        train_data_by_class, val_data_by_class, test_data_by_class, oos_val_data_by_class, oos_test_data_by_class=load_dataset(config)
+        data = load_dataset(config)
         data_generator = TextDataLoader(
-            data_by_class=train_data_by_class, 
+            data_by_class=data["meta_val"], 
             k_shot=self.k_shot, 
             n_query=self.k_shot,
-            n_way = 1, seed=1234, task=config.dataset)
+            n_way = 1,
+            oos = config.oos,
+            oos_data_by_class=data["oos_val"],
+            seed=1234, task=config.dataset)
         episodes = data_generator.sample_episodes(self.meta_batch_size)
         self.assertEqual(len(episodes), self.meta_batch_size)
         self.assertEqual(len(episodes[0]["support_examples"]), 1*2)
         self.assertEqual(len(episodes[0]["support_labels"]), 1*2)
         self.assertEqual(episodes[0]["support_labels_onehot"].shape, [1*2, 1])
+        self.assertEqual(len(episodes[0]["oos_examples"]), 2)

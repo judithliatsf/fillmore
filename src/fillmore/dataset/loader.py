@@ -496,12 +496,6 @@ def load_dataset(args):
             'args.dataset should be one of'
             '[20newsgroup, amazon, fewrel, huffpost, reuters, rcv1, clinc150]')
 
-    # if args.mode == 'finetune':
-    #     # in finetune, we combine train and val for training the base classifier
-    #     train_classes = train_classes + val_classes
-    #     args.n_train_class = args.n_train_class + args.n_val_class
-    #     args.n_val_class = args.n_train_class
-
     tprint('Loading data')
     all_data, data_by_class = _load_json(args.data_path, args.dataset)
 
@@ -563,14 +557,14 @@ def load_dataset(args):
                 else:
                     test_data_by_class[task_id] = examples
 
-    n_train_class = len(train_data_by_class)
-    n_val_class = len(val_data_by_class)
-    n_test_class = len(test_data_by_class)
+    args.n_train_class = len(train_data_by_class)
+    args.n_val_class = len(val_data_by_class)
+    args.n_test_class = len(test_data_by_class)
 
     tprint('#train classes {}, #val classes {}, #test classes {}'.format(
-        n_train_class, n_val_class, n_test_class))
+        args.n_train_class, args.n_val_class, args.n_test_class))
 
-    tprint('#train {}, #val {}, #test {}'.format(
+    tprint('#train examples {}, #val examples {}, #test examples {}'.format(
         len([item for items in train_data_by_class.values()
              for item in items]),
         len([item for items in val_data_by_class.values() for item in items]),
@@ -582,7 +576,7 @@ def load_dataset(args):
             "meta_test": test_data_by_class
             }
 
-    if args.smlmt:
+    if hasattr(args, 'smlmt') and args.smlmt:
         tprint('Start to create smlmt tasks from unlabeled examples')
 
         # transform examples to classes
@@ -592,14 +586,14 @@ def load_dataset(args):
         train_data_by_class = data_by_class
         val_data_by_class = {}
         test_data_by_class = {}
-        n_train_class = len(train_data_by_class)
-        n_val_class = len(val_data_by_class)
-        n_test_class = len(test_data_by_class)
+        args.n_smlmt_train_class = len(train_data_by_class)
+        args.n_smlmt_val_class = len(val_data_by_class)
+        args.n_smlmt_test_class = len(test_data_by_class)
 
         tprint('#train classes {}, #val classes {}, #test classes {}'.format(
-            n_train_class, n_val_class, n_test_class))
+            args.n_smlmt_train_class, args.n_smlmt_val_class, args.n_smlmt_test_class))
 
-        tprint('#train {}, #val {}, #test {}'.format(
+        tprint('#train examples {}, #val examples {}, #test examples {}'.format(
             len([item for items in train_data_by_class.values()
                  for item in items]),
             len([item for items in val_data_by_class.values()
@@ -614,7 +608,7 @@ def load_dataset(args):
         # todo change according to dataset
         oos_val_data_by_class = {0: data_by_class[0][:500]}
         oos_test_data_by_class = {0: data_by_class[0][500:1000]}
-        data["oos_val"] = oos_val_data_by_class,
+        data["oos_val"] = oos_val_data_by_class
         data["oos_test"] = oos_test_data_by_class
 
     return data
@@ -622,10 +616,6 @@ def load_dataset(args):
 
 if __name__ == "__main__":
     from transformers import BertConfig
-    data_config = BertConfig.from_dict({
-        'dataset': 'smlmt',
-        'data_path': "data/smlmt_clinc150_pre_smlmt.json"
-    })
     data_config = BertConfig.from_dict({
         'dataset': 'clinc150c',
         'data_path': "data1/clinc150.json",

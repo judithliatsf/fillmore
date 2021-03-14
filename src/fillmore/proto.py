@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.python.training.tracking.util import Checkpoint
 from fillmore.dataset.loader import load_dataset
 from fillmore.dataset.data_loader import TextDataLoader
+from fillmore.metrics import *
 from tqdm import tqdm
 
 def proto_net_train(config, model, optimizer, retrain):
@@ -118,6 +119,35 @@ def proto_net_eval_step(model, episode, config):
     }
     return episode_stats
 
+def evaluate_oos_f1(model, data_loader, num_episodes, config):
+    thresholds = np.arange(0.0, 1.0, 0.1)
+    in_domain_correct_all = []
+    oos_correct_all = []
+    oos_output_all = []
+
+    for i in tqdm(range(num_episodes)):
+        oos_episode = data_loader.sample_episodes(1)[0]
+        in_domain_correct, oos_output, oos_correct = evaluate_oos_f1_step(model, oos_episode, thresholds)
+        in_domain_correct_all.append(in_domain_correct.numpy())
+        oos_correct_all.append(oos_correct.numpy())
+        oos_output_all.append(oos_output.numpy())
+
+    oos_stats = oos_f1_batch(in_domain_correct_all, oos_correct_all, oos_output_all)
+    stats = select_oos_threshold(oos_stats, thresholds)
+    return stats
+
+def evaluate_oos_f1_step(model, oos_episode, thresholds):
+
+    oos_logits = model(oos_episode, oos_episode["oos_examples"])
+    query_logits = model(oos_episode, oos_episode["query_examples"])
+    query_labels_onehot = oos_episode["query_labels_onehot"]
+
+    in_domain_correct, oos_output = in_domain_stats_episode(query_logits, query_labels_onehot, thresholds)
+
+    oos_correct = oos_stats_episode(oos_logits, thresholds)
+
+    return in_domain_correct, oos_output, oos_correct
+
 def create_data_loaders(config):
 
     # load IntentExamples for target task
@@ -150,15 +180,18 @@ def create_data_loaders(config):
         )
 
     if config.oos:
+        # include oos samples as an additional class in meta_val or meta_test
         data_loaders["oos_val"] = TextDataLoader(
-            data["oos_val"],
-            config.k_shot, config.n_query, 1,
-            seed=config.seed, task=config.dataset
+            data["meta_val"],
+            config.k_shot, config.n_query, config.n_way,
+            seed=config.seed, task=config.dataset,
+            oos=config.oos, oos_data_by_class=data["oos_val"]
         )
         data_loaders["oos_test"] = TextDataLoader(
-            data["oos_test"],
-            config.k_meta_test_shot, config.n_meta_test_query, 1,
-            seed=config.seed, task=config.dataset
+            data["meta_test"],
+            config.k_meta_test_shot, config.n_meta_test_query, config.n_meta_test_way,
+            seed=config.seed, task=config.dataset,
+            oos=config.oos, oos_data_by_class=data["oos_test"]
         )
     
     return data_loaders
@@ -166,7 +199,7 @@ def create_data_loaders(config):
 if __name__ == "__main__":
     from transformers import BertConfig
     import os
-    meta_train = True
+    meta_train = False
     meta_test = True
     retrain = False
     checkpoint_name = None
@@ -230,7 +263,11 @@ if __name__ == "__main__":
     # meta train
     if meta_train:
         proto_net_train(config, model, optimizer, retrain)
-
+        # meta validation
+        val_stats = proto_net_eval(model, data_loaders["meta_val"], config.n_meta_val_episodes, config)
+        if config.oos:
+            oos_val_stats = evaluate_oos_f1(model, data_loaders["oos_val"], config.n_meta_val_episodes, config)
+            
     # meta test
     if meta_test:
         model.load_weights(config.checkpoint_path)
@@ -238,3 +275,8 @@ if __name__ == "__main__":
         stats = proto_net_eval(model, data_loaders["meta_test"], config.n_meta_test_episodes, config)
         print("test acc: {}".format(stats["acc"]))
         print("test loss: {}".format(stats["loss"]))
+
+        if config.oos:
+            oos_test_stats = evaluate_oos_f1(model, data_loaders["oos_test"], config.n_meta_val_episodes, config)
+            print("oos recall: {}".format(oos_test_stats["oos_recall"]))
+            print("in domain acc: {}".format(oos_test_stats["in_domain_accuracy"]))
