@@ -45,6 +45,8 @@ def get_smlmt(examples):
 
         if len(w) >=3 and len(items) >=30 and len(items) < 100:
             has_example = False
+            json_str_per_class = []
+            labeled_sentences_per_class = set()
             for item in items:
                 if item["raw"] not in labeled_sentences:
                     item["label"] = label
@@ -54,9 +56,19 @@ def get_smlmt(examples):
                     else:
                         data_by_class[label] = [item]
                     json_str = json.dumps(item)
-                    json_strs.append(json_str+'\n')
-                    labeled_sentences.add(item["raw"])
+                    json_str_per_class.append(json_str+'\n')
+                    labeled_sentences_per_class.add(item["raw"])
                     has_example = True
+            
+            # check again if each class has more than 30 examples
+            if label in data_by_class:
+                if len(data_by_class[label]) < 30:
+                    data_by_class.pop(label)
+                    has_example = False
+                else:
+                    json_strs.extend(json_str_per_class)
+                    labeled_sentences = labeled_sentences | labeled_sentences_per_class
+
             if has_example:
                 label_map[w] = label            
                 label = label + 1
