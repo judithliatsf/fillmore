@@ -7,19 +7,20 @@ import tensorflow as tf
 
 ## Training utilities
 class WarmupLRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
-  def __init__(self, d_model, warmup_steps=4000):
+  def __init__(self, d_model, warmup_steps=4000, scale=2e-3):
     super(WarmupLRScheduler, self).__init__()
 
     self.d_model = d_model #size of hidden state, for BERT is 768
     self.d_model = tf.cast(self.d_model, tf.float32)
 
     self.warmup_steps = warmup_steps
+    self.scale = scale
 
-  def __call__(self, step, scale=2e-3):
+  def __call__(self, step):
     step = tf.cast(step, tf.float32)
     arg1 = tf.math.rsqrt(step)
     arg2 = step * (self.warmup_steps ** -1.5)
-    return scale * tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
+    return self.scale * tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
 
 
 ## Loss utilities
