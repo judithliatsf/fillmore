@@ -5,6 +5,23 @@ import os
 import random
 import tensorflow as tf
 
+## Training utilities
+class WarmupLRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
+  def __init__(self, d_model, warmup_steps=4000):
+    super(WarmupLRScheduler, self).__init__()
+
+    self.d_model = d_model #size of hidden state, for BERT is 768
+    self.d_model = tf.cast(self.d_model, tf.float32)
+
+    self.warmup_steps = warmup_steps
+
+  def __call__(self, step, scale=2e-3):
+    step = tf.cast(step, tf.float32)
+    arg1 = tf.math.rsqrt(step)
+    arg2 = step * (self.warmup_steps ** -1.5)
+    return scale * tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
+
+
 ## Loss utilities
 def cross_entropy_loss(pred, label):
     return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=pred, labels=tf.stop_gradient(label)))# / k_shot)
