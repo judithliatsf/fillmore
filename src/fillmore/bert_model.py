@@ -1,8 +1,8 @@
 from transformers import TFBertPreTrainedModel, TFBertMainLayer
 from fillmore.bert_featurizer import BertSingleSentenceFeaturizer
 import tensorflow as tf
-from transformers import AutoTokenizer
-
+from transformers import AutoTokenizer, TFAutoModel, TFPreTrainedModel, AutoConfig
+from transformers import RobertaTokenizer, TFRobertaModel, RobertaConfig
 
 class BertTextClassification(TFBertPreTrainedModel):
     def __init__(self, config, *inputs, **kwargs):
@@ -39,7 +39,6 @@ class BertTextClassification(TFBertPreTrainedModel):
 class BertTextEncoder(TFBertPreTrainedModel):
     def __init__(self, config, *inputs, **kwargs):
         super().__init__(config, *inputs, **kwargs)
-        self.num_labels = config.num_labels
         self.max_seq_len = config.max_seq_len
         self.dummy_text_inputs = {
         'input_ids': tf.constant([[101, 2365, 1997, 13259, 102], [101, 2365, 1997, 103, 102]], dtype=tf.int32), 
@@ -57,7 +56,6 @@ class BertTextEncoder(TFBertPreTrainedModel):
 class BertTextEncoderWrapper(TFBertPreTrainedModel):
     def __init__(self, config, *inputs, **kwargs):
         super().__init__(config, *inputs, **kwargs)
-        self.num_labels = config.num_labels
         self.max_seq_len = config.max_seq_len
         self.encoder = BertTextEncoder(config)
         self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
@@ -72,3 +70,29 @@ class BertTextEncoderWrapper(TFBertPreTrainedModel):
                     padding=True, max_length=self.max_seq_len, return_tensors='tf')
         outputs = self.encoder(features)
         return outputs
+
+
+class RobertaEncoder(TFPreTrainedModel):
+    def __init__(self, config, *inputs, **kwargs):
+        super().__init__(config, *inputs, **kwargs)
+        self.max_seq_len = config.max_seq_len
+        self.encoder = TFRobertaModel.from_pretrained("roberta-base")
+        self.tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
+        self.dummy_text_inputs = [
+            "cats are in the cloud",
+            "dogs are on the ground"
+        ]
+    def call(self, inputs):
+        features = self.tokenizer.batch_encode_plus(
+                    batch_text_or_text_pairs=inputs, 
+                    truncation=True, 
+                    padding=True, max_length=self.max_seq_len, return_tensors='tf')
+        outputs = self.encoder(features)[1]
+        return outputs
+
+if __name__ == "__main__":
+    pretrained_model_name_or_path = "roberta"
+    config = RobertaConfig()
+    config.max_seq_len = 16
+    model = RobertaEncoder(config)
+    output = model(model.dummy_text_inputs)
