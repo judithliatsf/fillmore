@@ -4,8 +4,17 @@ import numpy as np
 import os
 import random
 import tensorflow as tf
+from collections import Counter
 
 ## Training utilities
+def count_class(episode, class_counter):
+  counter = Counter(episode["support_classes"])
+  for class_id, n_samples in counter.items():
+    if class_id in class_counter:
+      class_counter[class_id]+= n_samples
+    else:
+      class_counter[class_id] = n_samples
+
 class WarmupLRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
   def __init__(self, d_model, warmup_steps=4000, scale=2e-3):
     super(WarmupLRScheduler, self).__init__()

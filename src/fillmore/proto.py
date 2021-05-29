@@ -1,55 +1,108 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.training.tracking.util import Checkpoint
 from fillmore.dataset.loader import load_dataset
 from fillmore.dataset.data_loader import TextDataLoader
+from fillmore.utils import count_class
 from fillmore.metrics import *
 from tqdm import tqdm
+import mlflow
 
-def proto_net_train(config, model, optimizer, retrain):
+def proto_net_train(config, model, optimizer, retrain=False, ckpt_manager=None):
 
     # train
     if retrain:
-        model.load_weights(config.checkpoint_path)
-        print("Load model weights from checkpoints ", config.checkpoint_path)
+        status = checkpoint.restore(manager.latest_checkpoint)
+        print("Load model weights from checkpoints ", manager.latest_checkpoint)
     
-    for ep in tqdm(range(config.n_epochs)):
+    # start training
+    print("start training...")
+    seen_task_stats = proto_net_eval(model, data_loaders["meta_train"], config.n_meta_val_episodes, config)
+    unseen_task_stats = proto_net_eval(model, data_loaders["meta_val"], config.n_meta_val_episodes, config)
+    mlflow.log_metric("meta-val-loss-seen-task", seen_task_stats["loss"], step = optimizer.iterations.numpy())
+    mlflow.log_metric("meta-val-acc-seen-task", seen_task_stats["acc"], step = optimizer.iterations.numpy())
+    mlflow.log_metric("meta-val-loss-unseen-task", unseen_task_stats["loss"], step = optimizer.iterations.numpy())
+    mlflow.log_metric("meta-val-acc-unseen-task", unseen_task_stats["acc"], step = optimizer.iterations.numpy())
+    
+    # add metric to record classes being sampled
+    train_class_counter = {}
+    smlmt_class_counter = {}
+    best_val_acc_unseen = 0.0
+    patience = 0.0
+    prev_val_acc_unseen = 0.0
+    min_delta = 0.01
+    max_patience = 5
 
-        for epi in range(config.n_meta_train_episodes):
+    for ep in range(config.n_epochs):
+
+        print("epoch: {}".format(ep))
+        epoch_train_loss = []
+        epoch_train_acc = []
+
+        for epi in tqdm(range(config.n_meta_train_episodes), total=(config.n_epochs*config.n_meta_train_episodes)):
             
             # set learning rate
-            if (epi + 1) % 50 == 0:
-                optimizer.learning_rate = optimizer.learning_rate/2
-                print("learning rate for iteration {}: {}".format(optimizer.iterations, optimizer.learning_rate))
-            
+            global_step = optimizer.iterations.numpy()
+            lr = optimizer.learning_rate(tf.cast(optimizer.iterations, tf.float32))
+            mlflow.log_metric("meta-train-lr", lr.numpy(), step=global_step)
+           
             if not config.smlmt:
                 episode = data_loaders["meta_train"].sample_episodes(1)[0]
+                count_class(episode, train_class_counter)
             else:
                 lucky_number = np.random.random_sample()
                 if lucky_number < config.smlmt_ratio:
                     episode = data_loaders["smlmt_train"].sample_episodes(1)[0]
+                    count_class(episode, smlmt_class_counter)
                 else:
                     episode = data_loaders["meta_train"].sample_episodes(1)[0]
+                    count_class(episode, train_class_counter)
             
             loss, grad = proto_net_train_step(model, optimizer, episode, config)    
+            episode_stats = proto_net_eval_step(model, episode, config)
+            epoch_train_loss.append(episode_stats["loss"])
+            epoch_train_acc.append(episode_stats["acc"])
             
-            
-            # training loss and acc
-            if (epi+1) % 10 == 0:
-                episode_stats = proto_net_eval_step(model, episode, config)
-                print("training loss: {}".format(episode_stats["loss"]))
-                print("training acc: {}".format(episode_stats["acc"]))
+        # training batch(epoch) loss and acc
+        ep_train_loss = np.mean(epoch_train_loss)
+        ep_train_acc = np.mean(epoch_train_acc)
+        print("training loss: {}".format(ep_train_loss))
+        print("training acc: {}".format(ep_train_acc))
+        mlflow.log_metric("meta-train-loss", ep_train_loss, step = optimizer.iterations.numpy())
+        mlflow.log_metric("meta-train-acc", ep_train_acc, step = optimizer.iterations.numpy())
+
+        # meta validation on seen task
+#         seen_task_stats = proto_net_eval(model, data_loaders["meta_train"], config.n_meta_val_episodes, config)
+#         print("seen task val loss: {}".format(seen_task_stats["loss"]))
+#         print("seen task val acc: {}".format(seen_task_stats["acc"]))
+#         mlflow.log_metric("meta-val-loss-seen-task", seen_task_stats["loss"], step = optimizer.iterations.numpy())
+#         mlflow.log_metric("meta-val-acc-seen-task", seen_task_stats["acc"], step = optimizer.iterations.numpy())
+
+       # meta validation on unseen task
+        unseen_task_stats = proto_net_eval(model, data_loaders["meta_val"], config.n_meta_val_episodes, config)
+        print("meta-val-acc-unseen-task: {}".format(unseen_task_stats["acc"]))
+        print("meta-val-loss-unseen-task: {}".format(unseen_task_stats["loss"]))
+        mlflow.log_metric("meta-val-loss-unseen-task", unseen_task_stats["loss"], step = optimizer.iterations.numpy())
+        mlflow.log_metric("meta-val-acc-unseen-task", unseen_task_stats["acc"], step = optimizer.iterations.numpy())
+
+        # update best validation accurace
+        if unseen_task_stats["acc"] > best_val_acc_unseen:
+          best_val_acc_unseen = unseen_task_stats["acc"]
+          ckpt_manager.save()
         
-        # meta validation
-        stats = proto_net_eval(model, data_loaders["meta_val"], config.n_meta_val_episodes, config)
-        print("val acc: {}".format(stats["acc"]))
-        print("val loss: {}".format(stats["loss"]))
+        # check improvements of validation acc
+        if unseen_task_stats["acc"] - prev_val_acc_unseen > min_delta:
+          patience = 0
+        else:
+          patience = patience + 1
         
         # save model at the end of every epoch
-        checkpoint_name = "model" + str(ep)
-        model_file = config.experiment_dir + "/" + config.run_dir + '/' + checkpoint_name
-        print("saving checkpoints at iteration {} to {}".format(optimizer.iterations.numpy(), model_file))
-        model.save_weights(model_file)
+        if patience > max_patience:
+          print("early stop at episodes: {}".format(optimizer.iterations.numpy()))
+          break
+
+    config.save_pretrained(config.run_dir)
+    mlflow.log_artifacts(config.run_dir, artifact_path="logs")
+    return train_class_counter, smlmt_class_counter        
 
 def proto_net_train_step(model, opt, episode, config):
     """Update model by backpropagating training loss per episode
@@ -88,7 +141,7 @@ def proto_net_eval(model, data_loader, num_episodes, config):
     meta_eval_accuracies = []
     losses = []
 
-    for episode in tqdm(data_loader.sample_episodes(num_episodes)):
+    for episode in data_loader.sample_episodes(num_episodes):
         episode_stats = proto_net_eval_step(model, episode, config)
         meta_eval_accuracies.append(episode_stats["acc"])
         losses.append(episode_stats["loss"])
@@ -148,6 +201,18 @@ def evaluate_oos_f1_step(model, oos_episode, thresholds):
 
     return in_domain_correct, oos_output, oos_correct
 
+def analyze_oos_f1_step(model, oos_episode, threshold):
+
+    oos_logits = model(oos_episode, oos_episode["oos_examples"])
+    query_logits = model(oos_episode, oos_episode["query_examples"])
+    query_labels_onehot = oos_episode["query_labels_onehot"]
+
+    in_domain_correct, oos_output = in_domain_stats_episode(query_logits, query_labels_onehot, [threshold])
+
+    oos_correct = oos_stats_episode(oos_logits, [threshold])
+
+    return in_domain_correct, oos_output, oos_correct
+
 def create_data_loaders(config):
 
     # load IntentExamples for target task
@@ -199,10 +264,12 @@ def create_data_loaders(config):
 if __name__ == "__main__":
     from transformers import BertConfig
     import os
-    meta_train = False
+    from fillmore.utils import WarmupLRScheduler
+
+    meta_train = True
     meta_test = True
     retrain = False
-    checkpoint_name = None
+    # checkpoint_name = None
 
     config=BertConfig.from_dict({
         "experiment_dir": "logs/proto1",
@@ -227,22 +294,23 @@ if __name__ == "__main__":
     })
     
     # train config
-    config.learning_rate = 1e-5
+    config.learning_rate = 3e-3
+    config.warm_up_prop = 0.1
     config.epsilon = 1e-8
     config.clipnorm = 1.0
     config.n_meta_train_episodes = 1 # number of training episodes per epoch
     config.n_meta_val_episodes = 2 # number of validation episodes
     config.n_meta_test_episodes = 3
-    config.n_epochs = 1 # number of training epochs
+    config.n_epochs = 2 # number of training epochs
     
     # checkpoints 
-    config.run_dir = 'cls_'+str(config.n_way)+'.eps_'+str(config.n_meta_train_episodes) + \
+    config.run_dir = 'logs/cls_'+str(config.n_way)+'.eps_'+str(config.n_meta_train_episodes) + \
         '.k_shot_' + str(config.k_shot) + '.n_query_' + str(config.n_query)
-    checkpoint_dir = config.experiment_dir + '/' + config.run_dir
-    if checkpoint_name is not None:
-        config.checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
-    else:
-        config.checkpoint_path = tf.train.latest_checkpoint(checkpoint_dir)
+    # checkpoint_dir = config.experiment_dir + '/' + config.run_dir
+    # if checkpoint_name is not None:
+    #     config.checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
+    # else:
+    #     config.checkpoint_path = tf.train.latest_checkpoint(checkpoint_dir)
 
     # create DataLoader for SPLIT
     data_loaders = create_data_loaders(config)
@@ -253,16 +321,20 @@ if __name__ == "__main__":
     config.label_smoothing = 0.0
     config.max_seq_len = 32
     embedding_func = BertTextEncoderWrapper(config)
-    model = MetricLearner(embedding_func)       
+    model = MetricLearner(embedding_func)
+    learning_rate_scheduler = WarmupLRScheduler(config.hidden_size, scale=config.learning_rate, warmup_steps=config.n_meta_train_episodes*config.n_epochs*config.warm_up_prop)
     optimizer = tf.keras.optimizers.Adam(
-        learning_rate=config.learning_rate,
+        learning_rate=learning_rate_scheduler,
         epsilon=config.epsilon,
         clipnorm=config.clipnorm
     )
-
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    manager = tf.train.CheckpointManager(
+        checkpoint, directory=config.run_dir, max_to_keep=3)
+    
     # meta train
     if meta_train:
-        proto_net_train(config, model, optimizer, retrain)
+        proto_net_train(config, model, optimizer, retrain=retrain, ckpt_manager=manager)
         # meta validation
         val_stats = proto_net_eval(model, data_loaders["meta_val"], config.n_meta_val_episodes, config)
         if config.oos:
@@ -270,8 +342,9 @@ if __name__ == "__main__":
             
     # meta test
     if meta_test:
-        model.load_weights(config.checkpoint_path)
-        print("Load model weights from checkpoints {} for meta testing".format(config.checkpoint_path))
+        # load the best checkpoint
+        status = checkpoint.restore(manager.latest_checkpoint)
+        print("Load model weights from checkpoints {} for meta testing".format(manager.latest_checkpoint))
         stats = proto_net_eval(model, data_loaders["meta_test"], config.n_meta_test_episodes, config)
         print("test acc: {}".format(stats["acc"]))
         print("test loss: {}".format(stats["loss"]))

@@ -98,7 +98,7 @@ class TextDataGeneratorTest(unittest.TestCase):
         self.assertEqual(len(episodes[0]["support_examples"]), 3*2)
         self.assertEqual(len(episodes[0]["support_labels"]), 3*2)
         self.assertEqual(episodes[0]["support_labels_onehot"].shape, [3*2, 3])
-        self.assertEqual(config.n_smlmt_train_class, 223)
+        self.assertEqual(config.n_smlmt_train_class, 217)
         self.assertEqual(config.n_smlmt_val_class, 0)
         self.assertEqual(config.n_smlmt_test_class, 0)
     

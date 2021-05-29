@@ -39,30 +39,24 @@ def data_from_df(df):
     return data_by_class, oos_data_by_class
 
 if __name__ == "__main__":
-    with open ("data/salesforce/sales.tsv", encoding="utf-8", mode="r") as f:
+    with open ("data/intent_examples.tsv", encoding="utf-8", mode="r") as f:
         df = pd.read_csv(f, sep="\t")
     data_by_class, oos_data_by_class = data_from_df(df)
+
+    import numpy as np
+    for class_name in data_by_class:
+        examples = data_by_class[class_name]
+        lengths = [len(example["text"]) for example in examples]
+        print("average length {}".format(np.mean(lengths)))
 
     from transformers import RobertaConfig
     config=RobertaConfig.from_dict({
     "dataset": "sales",
-    "data_path": "/dbfs/judith/fillmore/clinc150.json",
-    "num_examples_from_class_train": 50,
-    "num_examples_from_class_valid": 50,
-    "num_examples_from_class_test": 50,
-    "n_way": 9, # 6 for non-smlmt, 9 for smlmt
-    "k_shot": 10,
-    "n_query": 10,
-    "n_meta_test_way": 4,
-    "k_meta_test_shot": 10,
-    "n_meta_test_query": 10,
+    "n_meta_test_way": 2,
+    "k_meta_test_shot": 3,
+    "n_meta_test_query": 3,
     "oos": True,
-    "oos_data_path": "/dbfs/judith/fillmore/clinc150_oos.json", 
-    "smlmt": True,
-    "smlmt_ratio": 0.6,
-    "smlmt_k_shot": 15,
-    "smlmt_n_query": 10,
-    "seed": 1234
+    "seed":1234
 })
     from fillmore.dataset.data_loader import TextDataLoader
     data_loader = TextDataLoader(

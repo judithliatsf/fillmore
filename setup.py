@@ -7,7 +7,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="fillmore",
-    version="0.2.3",
+    version="0.2.4",
     license="SalesforceIQ internal",
     author="yuel",
     author_email="yuel@alumni.stanford.edu",
