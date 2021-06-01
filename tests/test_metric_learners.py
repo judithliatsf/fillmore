@@ -1,5 +1,5 @@
 import tensorflow as tf
-from fillmore.metric_learners import MetricLearner
+from fillmore.metric_learners import MetricLearner, KNNLearner
 from transformers import AutoConfig
 from fillmore.protonet import ProtoLoss
 from fillmore.bert_model import BertTextEncoderWrapper
@@ -12,6 +12,7 @@ class MetricLearnerTest(tf.test.TestCase):
         self.config = config
         embedding_func = BertTextEncoderWrapper(self.config)
         self.learner = MetricLearner(embedding_func)
+        self.knn = KNNLearner(embedding_func)
 
     def test_forward_pass(self):
         episode = {
@@ -49,6 +50,14 @@ class MetricLearnerTest(tf.test.TestCase):
 
         acc = self.learner.compute_accuracy(query_labels_onehot, query_logits)
         self.assertAllClose(acc, 0.5)
+
+        query_prob = self.knn.compute_logits_for_episode(support_embeddings, query_embeddings, support_labels_onehot)
+        knn_loss = self.knn.compute_loss(query_prob, query_labels_onehot)
+        knn_acc = self.knn.compute_accuracy(query_labels_onehot, query_prob)
+
+        self.assertAllClose(query_prob, [[1.,0.],[0.,1.]])
+        self.assertAllClose(knn_loss, 7.689547)
+        self.assertAllClose(knn_acc, 0.5)
     
     def test_proto_loss(self):
         x_latent = tf.constant([[[1.0, 1.0], [0.0, 1.0], [0.5, 0.5]], [[1.0, -1.0], [0.0, -1.0], [0.5, -0.5]]]) # [N*S, D]
