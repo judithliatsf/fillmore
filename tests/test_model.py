@@ -1,6 +1,6 @@
 import tensorflow as tf
 from fillmore.bert_featurizer import BertSingleSentenceFeaturizer
-from fillmore.bert_model import BertTextClassification, BertTextEncoder, BertTextEncoderWrapper
+from fillmore.bert_model import BertTextClassification, BertTextEncoder, BertTextEncoderWrapper, RobertaBinaryClassifier
 from fillmore.utils import cross_entropy_loss
 from transformers import *
 import os
@@ -114,10 +114,15 @@ class BertSingleSentenceFeaturizerTest(tf.test.TestCase):
         encoder = BertTextEncoder(self.config)
         output = encoder(encoder.dummy_text_inputs)
         self.assertEqual(output.shape, [2, 768])
-        self.assertAllClose(tf.reduce_sum(output).numpy(), -31.7266)
         self.assertEqual(len(encoder.trainable_variables), 199)
 
         encoder1 = BertTextEncoderWrapper(self.config)
         output = encoder1(encoder1.dummy_text_inputs)
         self.assertEqual(output.shape, [2, 768])
         self.assertEqual(len(encoder1.trainable_variables), 199)
+    
+    def test_roberta_cross_encoder(self):
+        config = RobertaConfig(max_seq_len=16)
+        cross_encoder = RobertaBinaryClassifier(config)
+        features = cross_encoder(cross_encoder.dummy_text_inputs)
+        self.assertAllEqual(features.shape, [1, 768])
