@@ -126,11 +126,11 @@ class RobertaBinaryClassifier(TFPreTrainedModel):
     def call(self, features, training=False):
         # inputs may be of shape [batch_size, 1, max_seq_len]
         input_ids = tf.squeeze(
-            features['input_ids'], axis=1) if features['input_ids'].shape == 3 else features['input_ids']
+            features['input_ids'], axis=1) if len(features['input_ids'].shape) == 3 else features['input_ids']
         token_type_ids = tf.squeeze(
-            features['token_type_ids'], axis=1) if features['token_type_ids'].shape == 3 else features['token_type_ids']
+            features['token_type_ids'], axis=1) if len(features['token_type_ids'].shape) == 3 else features['token_type_ids']
         attention_mask = tf.squeeze(
-            features['attention_mask'], axis=1) if features['attention_mask'].shape == 3 else features['attention_mask']
+            features['attention_mask'], axis=1) if len(features['attention_mask'].shape) == 3 else features['attention_mask']
         pooled_output = self.encoder(
             input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)[1]
 
