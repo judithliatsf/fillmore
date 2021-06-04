@@ -6,7 +6,7 @@ from transformers import TFBertPreTrainedModel, TFBertMainLayer
 from transformers.models.bert.tokenization_bert import BertTokenizer
 from fillmore.bert_featurizer import BertSingleSentenceFeaturizer
 import tensorflow as tf
-from transformers import AutoTokenizer, TFAutoModel, TFPreTrainedModel, AutoConfig
+from transformers import AutoTokenizer, TFAutoModelForSequenceClassification, TFPreTrainedModel, AutoConfig
 from transformers import RobertaTokenizer, TFRobertaModel, RobertaConfig
 
 
@@ -157,6 +157,60 @@ class RobertaBinaryClassifier(TFPreTrainedModel):
         labels = tf.argmax(labels_one_hot, -1)  # (B, 1)
         return tf.reduce_mean(tf.cast(tf.equal(labels, predictions), dtype=tf.float32))
 
+class AutoBinaryClassifier(TFPreTrainedModel):
+    def __init__(self, config, model_name, *inputs, **kwargs):
+        super().__init__(config, *inputs, **kwargs)
+        self.max_seq_len = config.max_seq_len
+        self.encoder = TFAutoModelForSequenceClassification.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.dummy_text_inputs = self.tokenizer.encode_plus(
+        text="cats are in the cloud", 
+        text_pair="dogs are on the ground",
+        truncation=True,
+        padding='max_length', max_length=config.max_seq_len,
+        return_tensors='tf', return_token_type_ids=True)
+        self.max_seq_len = config.max_seq_len
+        self.dummy_labels = [0, 1] # entail or not entail
+
+    def call(self, features, training=False):
+        # inputs may be of shape [batch_size, 1, max_seq_len]
+        input_ids = tf.squeeze(
+            features['input_ids'], axis=1) if len(features['input_ids'].shape) == 3 else features['input_ids']
+        token_type_ids = tf.squeeze(
+            features['token_type_ids'], axis=1) if len(features['token_type_ids'].shape) == 3 else features['token_type_ids']
+        attention_mask = tf.squeeze(
+            features['attention_mask'], axis=1) if len(features['attention_mask'].shape) == 3 else features['attention_mask']
+        logits = self.encoder(
+            input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask, training=training).logits
+
+        return logits
+
+    def compute_logits(self, inputs, training=False):
+        
+        return self.call(inputs, training=training)
+
+    def compute_loss(self, inputs, labels_one_hot):
+        if len(labels_one_hot.shape) != 2:
+            labels_one_hot = tf.one_hot(labels_one_hot, depth=self.num_classes)
+        logits = self.compute_logits(inputs, training=True)
+        return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=tf.stop_gradient(labels_one_hot)))
+
+    def compute_acc(self, inputs, labels_one_hot):
+        if len(labels_one_hot.shape) != 2:
+            labels_one_hot = tf.one_hot(labels_one_hot, depth=self.num_classes)
+        logits = self.compute_logits(inputs, training=False)
+        prob = tf.nn.softmax(logits)
+        predictions = tf.argmax(prob, -1)  # (B, 1)
+        labels = tf.argmax(labels_one_hot, -1)  # (B, 1)
+        return tf.reduce_mean(tf.cast(tf.equal(labels, predictions), dtype=tf.float32))
+    
+    def text_to_feature(self, inputs=[("cats are in the cloud", "dogs are on the ground")]):
+        """Give a list of tuple of texts, output features"""
+        return self.tokenizer.batch_encode_plus(
+        batch_text_or_text_pairs=inputs,
+        truncation=True,
+        padding='max_length', max_length=self.max_seq_len,
+        return_tensors='tf', return_token_type_ids=True)
 
 if __name__ == "__main__":
     pretrained_model_name_or_path = "roberta"
@@ -167,3 +221,5 @@ if __name__ == "__main__":
     config = RobertaConfig(max_seq_len=16)
     cross_encoder = RobertaBinaryClassifier(config)
     features = cross_encoder(cross_encoder.dummy_text_inputs)
+    cross_encoder = AutoBinaryClassifier(config, model_name="bert-base-cased-finetuned-mrpc")
+    logits = cross_encoder(cross_encoder.dummy_text_inputs)
