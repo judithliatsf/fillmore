@@ -23,7 +23,7 @@ class MetricLearner(tf.keras.Model):
     def predict_prob(self, episode, query_examples=[]):
         query_logits = self.call(episode, query_examples=query_examples)
         return tf.nn.softmax(query_logits)
-    
+
     def compute_loss(self, query_logits, query_labels_onehot):
         """generate loss for an episode
 
@@ -116,13 +116,28 @@ class KNNLearner(tf.keras.Model):
     def call(self, episode, query_examples=[]):
         if not query_examples:
             query_examples = episode["query_examples"]
-        query_pred = self.compute_logits_for_episode(episode, query_examples=query_examples)
+        query_pred = self.compute_logits_for_episode(
+            episode, query_examples=query_examples)
         return query_pred
 
     def predict_prob(self, episode, query_examples=[]):
+        """Compute the per class probabilty for each query example for KNN
+
+        Note that only the best class predicted by KNN is assigned a probability (distance), 
+        and other class is assigned 0 as probablity. For example, if N=5, Q=2,
+        the query_prob = [[0, 0.3, 0, 0, 0], [0, 0, 0.4, 0, 0]] if the query_pred
+        = [[0, 1, 0, 0, 0], [0, 0, 1, 0, 0]]. Depends on the distance function, the
+        probabilty can be a relevance score (distance_type='relevance'), 
+        or a cosine distance measure (distance_type='cosine'). Warning, if the
+        distance_type='l2', the probability (distance) returned is not a value between (0,1).
+
+        Returns:
+            query_prob ([N*Q, N]): the predicted query probablity
+        """
         if not query_examples:
             query_examples = episode["query_examples"]
-        distance = self._compute_distance(episode, query_examples=query_examples)
+        distance = self._compute_distance(
+            episode, query_examples=query_examples)
 
         support_labels_onehot = episode["support_labels_onehot"]
         values, indices = tf.nn.top_k(-distance, k=1)
@@ -134,7 +149,7 @@ class KNNLearner(tf.keras.Model):
         labels_onehot = tf.one_hot(labels_pred, depth=num_classes)
         labels_prob = tf.multiply(labels_onehot, values)
         return labels_prob
-    
+
     def _compute_relevance(self, episode, query_examples=[]):
         """compute relevance/similarity between each query and support example
         """
@@ -196,7 +211,8 @@ class KNNLearner(tf.keras.Model):
             # [num_query, num_support]
             distance = -1 * tf.matmul(emb_query, emb_support, transpose_b=True)
         elif self.distance_type == 'relevance':
-            distance = -self._compute_relevance(episode, query_examples=query_examples)
+            distance = - \
+                self._compute_relevance(episode, query_examples=query_examples)
         else:
             raise ValueError('Distance must be l2 or cosine')
         return distance
@@ -248,7 +264,8 @@ class KNNLearner(tf.keras.Model):
         Returns:
             query_logits ([N*Q, N]): the query logits
         """
-        distance = self._compute_distance(episode, query_examples=query_examples)
+        distance = self._compute_distance(
+            episode, query_examples=query_examples)
 
         support_labels_onehot = episode["support_labels_onehot"]
         _, indices = tf.nn.top_k(-distance, k=1)
