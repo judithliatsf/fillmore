@@ -266,7 +266,7 @@ if __name__ == "__main__":
     import os
     from fillmore.utils import WarmupLRScheduler
 
-    meta_train = True
+    meta_train = False
     meta_test = True
     retrain = False
     # checkpoint_name = None
@@ -330,9 +330,9 @@ if __name__ == "__main__":
         epsilon=config.epsilon,
         clipnorm=config.clipnorm
     )
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-    manager = tf.train.CheckpointManager(
-        checkpoint, directory=config.run_dir, max_to_keep=3)
+    # checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    # manager = tf.train.CheckpointManager(
+    #     checkpoint, directory=config.run_dir, max_to_keep=3)
     
     # meta train
     if meta_train:
@@ -345,8 +345,8 @@ if __name__ == "__main__":
     # meta test
     if meta_test:
         # load the best checkpoint
-        status = checkpoint.restore(manager.latest_checkpoint)
-        print("Load model weights from checkpoints {} for meta testing".format(manager.latest_checkpoint))
+        # status = checkpoint.restore(manager.latest_checkpoint)
+        # print("Load model weights from checkpoints {} for meta testing".format(manager.latest_checkpoint))
         stats = proto_net_eval(model, data_loaders["meta_test"], config.n_meta_test_episodes, config)
         print("test acc: {}".format(stats["acc"]))
         print("test loss: {}".format(stats["loss"]))

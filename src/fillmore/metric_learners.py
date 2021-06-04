@@ -114,15 +114,15 @@ class KNNLearner(tf.keras.Model):
         self.distance_type = distance_type
 
     def call(self, episode, query_examples=[]):
-        if query_examples:
-            episode["query_examples"] = query_examples
-        query_pred = self.compute_logits_for_episode(episode)
+        if not query_examples:
+            query_examples = episode["query_examples"]
+        query_pred = self.compute_logits_for_episode(episode, query_examples=query_examples)
         return query_pred
 
     def predict_prob(self, episode, query_examples=[]):
-        if query_examples:
-            episode["query_examples"] = query_examples
-        distance = self._compute_distance(episode)
+        if not query_examples:
+            query_examples = episode["query_examples"]
+        distance = self._compute_distance(episode, query_examples=query_examples)
 
         support_labels_onehot = episode["support_labels_onehot"]
         values, indices = tf.nn.top_k(-distance, k=1)
@@ -135,11 +135,12 @@ class KNNLearner(tf.keras.Model):
         labels_prob = tf.multiply(labels_onehot, values)
         return labels_prob
     
-    def _compute_relevance(self, episode):
+    def _compute_relevance(self, episode, query_examples=[]):
         """compute relevance/similarity between each query and support example
         """
         support_examples = episode['support_examples']
-        query_examples = episode['query_examples']
+        if not query_examples:
+            query_examples = episode['query_examples']
 
         text_pairs = []
         for q_id in range(len(query_examples)):
@@ -162,7 +163,7 @@ class KNNLearner(tf.keras.Model):
             relevance, (len(query_examples), len(support_examples)))
         return relevance
 
-    def _compute_distance(self, episode):
+    def _compute_distance(self, episode, query_examples=[]):
         """calculates the nearest neighbors prediction using the latent representation of
            support set and query set
 
@@ -173,10 +174,13 @@ class KNNLearner(tf.keras.Model):
         Returns:
             query_logits ([N*Q, N]): the query logits
         """
+        if not query_examples:
+            query_examples = episode["query_examples"]
+
         if self.distance_type == 'l2':
             support_embeddings = self.embedding_func(
                 episode["support_examples"])
-            query_embeddings = self.embedding_func(episode["query_examples"])
+            query_embeddings = self.embedding_func(query_examples)
             # [1, num_support, embed_dims]
             emb_support = tf.expand_dims(support_embeddings, axis=0)
             # [num_query, 1, embed_dims]
@@ -186,13 +190,13 @@ class KNNLearner(tf.keras.Model):
         elif self.distance_type == 'cosine':
             support_embeddings = self.embedding_func(
                 episode["support_examples"])
-            query_embeddings = self.embedding_func(episode["query_examples"])
+            query_embeddings = self.embedding_func(query_examples)
             emb_support = tf.nn.l2_normalize(support_embeddings, axis=1)
             emb_query = tf.nn.l2_normalize(query_embeddings, axis=1)
             # [num_query, num_support]
             distance = -1 * tf.matmul(emb_query, emb_support, transpose_b=True)
         elif self.distance_type == 'relevance':
-            distance = -self._compute_relevance(episode)
+            distance = -self._compute_relevance(episode, query_examples=query_examples)
         else:
             raise ValueError('Distance must be l2 or cosine')
         return distance
@@ -233,7 +237,7 @@ class KNNLearner(tf.keras.Model):
         accuracy = tf.reduce_mean(correct)
         return accuracy
 
-    def compute_logits_for_episode(self, episode):
+    def compute_logits_for_episode(self, episode, query_examples=[]):
         """calculates the nearest neighbors prediction using the latent representation of
            support set and query set
 
@@ -244,7 +248,7 @@ class KNNLearner(tf.keras.Model):
         Returns:
             query_logits ([N*Q, N]): the query logits
         """
-        distance = self._compute_distance(episode)
+        distance = self._compute_distance(episode, query_examples=query_examples)
 
         support_labels_onehot = episode["support_labels_onehot"]
         _, indices = tf.nn.top_k(-distance, k=1)
