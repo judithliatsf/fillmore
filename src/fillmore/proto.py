@@ -191,25 +191,25 @@ def evaluate_oos_f1(model, data_loader, num_episodes, config):
 
 def evaluate_oos_f1_step(model, oos_episode, thresholds):
 
-    oos_logits = model(oos_episode, oos_episode["oos_examples"])
-    query_logits = model(oos_episode, oos_episode["query_examples"])
+    oos_prob = model.predict_prob(oos_episode, oos_episode["oos_examples"])
+    query_prob = model.predict_prob(oos_episode, oos_episode["query_examples"])
     query_labels_onehot = oos_episode["query_labels_onehot"]
 
-    in_domain_correct, oos_output = in_domain_stats_episode(query_logits, query_labels_onehot, thresholds)
+    in_domain_correct, oos_output = in_domain_stats_episode(query_prob, query_labels_onehot, thresholds)
 
-    oos_correct = oos_stats_episode(oos_logits, thresholds)
+    oos_correct = oos_stats_episode(oos_prob, thresholds)
 
     return in_domain_correct, oos_output, oos_correct
 
 def analyze_oos_f1_step(model, oos_episode, threshold):
 
-    oos_logits = model(oos_episode, oos_episode["oos_examples"])
-    query_logits = model(oos_episode, oos_episode["query_examples"])
+    oos_prob = model.predict_prob(oos_episode, oos_episode["oos_examples"])
+    query_prob = model.predict_prob(oos_episode, oos_episode["query_examples"])
     query_labels_onehot = oos_episode["query_labels_onehot"]
 
-    in_domain_correct, oos_output = in_domain_stats_episode(query_logits, query_labels_onehot, [threshold])
+    in_domain_correct, oos_output = in_domain_stats_episode(query_prob, query_labels_onehot, [threshold])
 
-    oos_correct = oos_stats_episode(oos_logits, [threshold])
+    oos_correct = oos_stats_episode(oos_prob, [threshold])
 
     return in_domain_correct, oos_output, oos_correct
 
@@ -316,12 +316,14 @@ if __name__ == "__main__":
     data_loaders = create_data_loaders(config)
 
     # load model
-    from fillmore.metric_learners import MetricLearner
-    from fillmore.bert_model import BertTextEncoderWrapper
+    from fillmore.metric_learners import MetricLearner, KNNLearner
+    from fillmore.bert_model import BertTextEncoderWrapper, RobertaBinaryClassifier
     config.label_smoothing = 0.0
-    config.max_seq_len = 32
-    embedding_func = BertTextEncoderWrapper(config)
-    model = MetricLearner(embedding_func)
+    config.max_seq_len = 16
+    embedding_func = RobertaBinaryClassifier(config)
+    model = KNNLearner(embedding_func, distance_type='relevance')
+    # embedding_func = BertTextEncoderWrapper(config)
+    # model = MetricLearner(embedding_func)
     learning_rate_scheduler = WarmupLRScheduler(config.hidden_size, scale=config.learning_rate, warmup_steps=config.n_meta_train_episodes*config.n_epochs*config.warm_up_prop)
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=learning_rate_scheduler,

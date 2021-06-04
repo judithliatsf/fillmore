@@ -31,6 +31,8 @@ class MetricLearnerTest(tf.test.TestCase):
     def test_forward_pass(self):
         query_logits = self.learner(self.episode)
         self.assertAllEqual(query_logits.shape, [2, 3])
+        query_conf = self.learner.predict_prob(self.episode)
+        self.assertAllEqual(query_conf.shape, [2, 3])
     
     def test_proto(self):
         support_embeddings = tf.constant([[[1.0, 1.0], [0.0, 1.0], [0.5, 0.5]], [[1.0, -1.0], [0.0, -1.0], [0.5, -0.5]]]) # [N*S, D]
@@ -52,9 +54,13 @@ class MetricLearnerTest(tf.test.TestCase):
         self.assertAllClose(acc, 0.5)
     
     def test_knn(self):
-        query_prob = self.knn.compute_logits_for_episode(self.episode)
-        knn_loss = self.knn.compute_loss(query_prob, self.episode["query_labels_onehot"])
-        knn_acc = self.knn.compute_accuracy(self.episode["query_labels_onehot"], query_prob)
+        query_pred = self.knn.compute_logits_for_episode(self.episode)
+        distance = self.knn._compute_distance(self.episode)
+        query_prob = self.knn.predict_prob(self.episode)
+        knn_loss = self.knn.compute_loss(query_pred, self.episode["query_labels_onehot"])
+        knn_acc = self.knn.compute_accuracy(self.episode["query_labels_onehot"], query_pred)
+        self.assertAllEqual(distance.shape, [2, 5])
+        self.assertAllEqual(query_pred.shape, [2, 3])
         self.assertAllEqual(query_prob.shape, [2, 3])
         self.assertAllClose(knn_loss.numpy(), 10.252728)
         self.assertAllClose(knn_acc.numpy(), 0.0)

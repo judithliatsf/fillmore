@@ -1,11 +1,11 @@
 import tensorflow as tf
 import numpy as np
 
-def oos_stats_episode(oos_logits, thresholds):
+def oos_stats_episode(oos_prob, thresholds):
     """Intermediate statistics used to compute oos_f1 given logits output for oos episode
 
     Args:
-        oos_logits (tf.Tensor of [Q, N]): logits output for oos_examples
+        oos_prob (tf.Tensor of [Q, N]): probability output for oos_examples
         thresholds (List[float]): possible candidates as threshold between (0,1)
 
     Returns:
@@ -13,17 +13,17 @@ def oos_stats_episode(oos_logits, thresholds):
                                         is correctly identified as oos under the 
                                         thresholds[j]
     """
-    oos_prob = tf.nn.softmax(oos_logits)
+    # oos_prob = tf.nn.softmax(oos_prob)
     oos_conf = tf.expand_dims(tf.reduce_max(oos_prob, -1), axis=1)
     oos_correct = tf.less(oos_conf, thresholds)
     oos_correct = tf.cast(oos_correct, tf.float32)
     return oos_correct
 
-def in_domain_stats_episode(query_logits, query_labels_onehot, thresholds):
+def in_domain_stats_episode(query_prob, query_labels_onehot, thresholds):
     """Intermediate statistics for query episode used to compute oos_f1
 
     Args:
-        query_logits (tf.Tensor of [Q, N]): output logits of query episode
+        query_prob (tf.Tensor of [Q, N]): output probability of query episode
         query_labels_onehot (tf.Tensor of [Q, N]): one hot ground truth label
         thresholds (List[float]): possible candidates as threshold between (0,1)
 
@@ -35,7 +35,7 @@ def in_domain_stats_episode(query_logits, query_labels_onehot, thresholds):
                                         the ith example is classified as OOS as 
                                         its confidence < thresholds[j]
     """
-    query_prob = tf.nn.softmax(query_logits)
+    # query_prob = tf.nn.softmax(query_prob)
     query_pred = tf.expand_dims(tf.cast(tf.argmax(query_prob, -1), tf.float32),axis=1) #[Q, 1]
     query_conf = tf.expand_dims(tf.reduce_max(query_prob, -1), axis=1) # [Q, 1]
     query_conf_mask = tf.cast(tf.greater_equal(query_conf, thresholds), tf.float32) # [Q, T]

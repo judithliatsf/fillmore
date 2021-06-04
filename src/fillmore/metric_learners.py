@@ -20,6 +20,10 @@ class MetricLearner(tf.keras.Model):
             support_embeddings, query_embeddings, support_labels_onehot)
         return query_logits
 
+    def predict_prob(self, episode, query_examples=[]):
+        query_logits = self.call(episode, query_examples=query_examples)
+        return tf.nn.softmax(query_logits)
+    
     def compute_loss(self, query_logits, query_labels_onehot):
         """generate loss for an episode
 
@@ -103,7 +107,7 @@ class MetricLearner(tf.keras.Model):
 class KNNLearner(tf.keras.Model):
     """A learner that uses a learned distance metric to make predictions."""
 
-    def __init__(self, embedding_func, distance_type='l2', **kwargs):
+    def __init__(self, embedding_func, distance_type='cosine', **kwargs):
         # overwrite base class attributes
         super(KNNLearner, self).__init__(**kwargs)
         self.embedding_func = embedding_func
@@ -112,9 +116,25 @@ class KNNLearner(tf.keras.Model):
     def call(self, episode, query_examples=[]):
         if query_examples:
             episode["query_examples"] = query_examples
-        query_prob = self.compute_logits_for_episode(episode)
-        return query_prob
+        query_pred = self.compute_logits_for_episode(episode)
+        return query_pred
 
+    def predict_prob(self, episode, query_examples=[]):
+        if query_examples:
+            episode["query_examples"] = query_examples
+        distance = self._compute_distance(episode)
+
+        support_labels_onehot = episode["support_labels_onehot"]
+        values, indices = tf.nn.top_k(-distance, k=1)
+        indices = tf.squeeze(indices, axis=1)
+        labels_x = tf.argmax(support_labels_onehot, axis=1)
+
+        num_classes = support_labels_onehot.shape[1]
+        labels_pred = tf.gather(tf.constant(labels_x), indices)
+        labels_onehot = tf.one_hot(labels_pred, depth=num_classes)
+        labels_prob = tf.multiply(labels_onehot, values)
+        return labels_prob
+    
     def _compute_relevance(self, episode):
         """compute relevance/similarity between each query and support example
         """
@@ -142,43 +162,7 @@ class KNNLearner(tf.keras.Model):
             relevance, (len(query_examples), len(support_examples)))
         return relevance
 
-    def compute_loss(self, query_prob, query_labels_onehot):
-        """generate loss for an episode
-
-        Args:
-            query_prob ([N*Q, N]): query probability from `compute_logits_for_episode`
-            query_labels_onehot ([N*Q, N]): onehot label for query
-            support_labels_onehot ([N*S, N]): onehot label for support
-
-        Returns:
-            cost [float]: cross entropy loss averaged over all query examples
-        """
-
-#         bce = tf.keras.losses.BinaryCrossentropy()
-        bce = tf.keras.losses.BinaryCrossentropy(
-            from_logits=False, reduction=tf.keras.losses.Reduction.NONE)
-        cross_entropy_loss = bce(query_labels_onehot, query_prob)
-
-        cost = tf.reduce_mean(cross_entropy_loss)
-        return cost
-
-    def compute_accuracy(self, query_labels_onehot, query_prob):
-        """[summary]
-
-        Args:
-            query_labels_onehot ([N*Q, N]): onehot label for query
-            query_prob ([N*Q, N]): query probability from `compute_logits_for_episode`
-
-        Returns:
-            accuracy [float]: accuracy averaged over all query examples
-        """
-        correct = tf.equal(tf.argmax(query_labels_onehot, -1),
-                           tf.argmax(query_prob, -1), -1)
-        correct = tf.cast(correct, tf.float32)
-        accuracy = tf.reduce_mean(correct)
-        return accuracy
-
-    def compute_logits_for_episode(self, episode):
+    def _compute_distance(self, episode):
         """calculates the nearest neighbors prediction using the latent representation of
            support set and query set
 
@@ -199,10 +183,68 @@ class KNNLearner(tf.keras.Model):
             emb_query = tf.expand_dims(query_embeddings, axis=1)
             # [num_query, num_support]
             distance = tf.norm(emb_support - emb_query, axis=2)
+        elif self.distance_type == 'cosine':
+            support_embeddings = self.embedding_func(
+                episode["support_examples"])
+            query_embeddings = self.embedding_func(episode["query_examples"])
+            emb_support = tf.nn.l2_normalize(support_embeddings, axis=1)
+            emb_query = tf.nn.l2_normalize(query_embeddings, axis=1)
+            # [num_query, num_support]
+            distance = -1 * tf.matmul(emb_query, emb_support, transpose_b=True)
         elif self.distance_type == 'relevance':
             distance = -self._compute_relevance(episode)
         else:
             raise ValueError('Distance must be l2 or cosine')
+        return distance
+
+    def compute_loss(self, query_pred, query_labels_onehot):
+        """generate loss for an episode
+
+        Args:
+            query_pred ([N*Q, N]): query probability from `compute_logits_for_episode`
+            query_labels_onehot ([N*Q, N]): onehot label for query
+            support_labels_onehot ([N*S, N]): onehot label for support
+
+        Returns:
+            cost [float]: cross entropy loss averaged over all query examples
+        """
+
+#         bce = tf.keras.losses.BinaryCrossentropy()
+        bce = tf.keras.losses.BinaryCrossentropy(
+            from_logits=False, reduction=tf.keras.losses.Reduction.NONE)
+        cross_entropy_loss = bce(query_labels_onehot, query_pred)
+
+        cost = tf.reduce_mean(cross_entropy_loss)
+        return cost
+
+    def compute_accuracy(self, query_labels_onehot, query_pred):
+        """[summary]
+
+        Args:
+            query_labels_onehot ([N*Q, N]): onehot label for query
+            query_pred ([N*Q, N]): query probability from `compute_logits_for_episode`
+
+        Returns:
+            accuracy [float]: accuracy averaged over all query examples
+        """
+        correct = tf.equal(tf.argmax(query_labels_onehot, -1),
+                           tf.argmax(query_pred, -1), -1)
+        correct = tf.cast(correct, tf.float32)
+        accuracy = tf.reduce_mean(correct)
+        return accuracy
+
+    def compute_logits_for_episode(self, episode):
+        """calculates the nearest neighbors prediction using the latent representation of
+           support set and query set
+
+        Args:
+            support_embeddings ([N*S, D]): the latent representation of support set
+            query_embeddings ([N*Q, D]): the latent representation of query set
+            support_labels_onehot ([N*S, N]): the one-hot encodings of the query labels
+        Returns:
+            query_logits ([N*Q, N]): the query logits
+        """
+        distance = self._compute_distance(episode)
 
         support_labels_onehot = episode["support_labels_onehot"]
         _, indices = tf.nn.top_k(-distance, k=1)
