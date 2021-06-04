@@ -162,6 +162,7 @@ class AutoBinaryClassifier(TFPreTrainedModel):
         super().__init__(config, *inputs, **kwargs)
         self.max_seq_len = config.max_seq_len
         self.encoder = TFAutoModelForSequenceClassification.from_pretrained(model_name)
+        self.num_classes = self.encoder.num_labels
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.dummy_text_inputs = self.tokenizer.encode_plus(
         text="cats are in the cloud", 
